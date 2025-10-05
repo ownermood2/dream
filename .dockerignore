@@ -1,0 +1,85 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation
+README.md
+*.md
+docs/
+
+# Logs
+*.log
+logs/
+
+# Database (build-time - will use volume at runtime)
+# Exclude database files but KEEP questions.json for deployment
+data/*.db
+data/*.db-journal
+data/bot.lock
+data/scores.json
+data/active_chats.json
+data/user_stats.json
+# questions.json is NOT excluded - it's source data that must be deployed!
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Replit
+.replit
+replit.nix
+.config/
+.cache/
+.upm/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
