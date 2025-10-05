@@ -529,9 +529,12 @@ class DeveloperCommands:
                     success=True
                 )
                 
+                # Get updated count from database
+                remaining_count = len(self.db.get_all_questions())
+                
                 reply = await update.message.reply_text(
                     f"✅ Quiz #{quiz_id} deleted successfully! 🗑️\n\n"
-                    f"Remaining quizzes: {len(self.quiz_manager.get_all_questions())}"
+                    f"Remaining quizzes: {remaining_count}"
                 )
                 logger.info(f"Quiz #{quiz_id} deleted by user {update.effective_user.id}")
                 await self.auto_clean_message(update.message, reply, delay=3)
