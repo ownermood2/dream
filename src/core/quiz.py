@@ -176,6 +176,28 @@ class QuizManager:
                     logger.error(f"Error processing question: {e}")
                     continue
 
+            # Enrich questions with database IDs for reliable delquiz functionality
+            try:
+                db_questions = self.db.get_all_questions()
+                question_id_map = {}
+                for db_q in db_questions:
+                    # Match by cleaned question text
+                    clean_db_text = db_q['question'].strip()
+                    if clean_db_text.startswith('/addquiz'):
+                        clean_db_text = clean_db_text[len('/addquiz'):].strip()
+                    question_id_map[clean_db_text] = db_q['id']
+                
+                # Add IDs to loaded questions
+                id_count = 0
+                for q in self.questions:
+                    if q['question'] in question_id_map:
+                        q['id'] = question_id_map[q['question']]
+                        id_count += 1
+                
+                logger.info(f"Enriched {id_count}/{len(self.questions)} questions with database IDs")
+            except Exception as e:
+                logger.warning(f"Could not enrich questions with database IDs: {e}")
+
             # Load other data files
             for file_path, default_value, attr_name in [
                 (self.scores_file, {}, 'scores'),
@@ -658,32 +680,67 @@ class QuizManager:
                            f"Available in category: {len(available_filtered)}")
                 return selected
 
-            # If no chat_id provided (0 means no specific chat), return completely random
+            # If no chat_id provided (0 means no specific chat), return completely random from DB
             if chat_id == 0:
-                return random.choice(self.questions)
+                # Use database questions (with IDs) for better delquiz support
+                db_questions = self.db.get_all_questions()
+                if db_questions:
+                    selected = random.choice(db_questions)
+                    # Convert options from JSON string if needed
+                    if isinstance(selected['options'], str):
+                        selected['options'] = json.loads(selected['options'])
+                    return selected
+                # Fallback to JSON questions if DB is empty
+                return random.choice(self.questions) if self.questions else None
 
-            # Initialize available questions if needed
-            if chat_id not in self.available_questions or not self.available_questions[chat_id]:
-                logger.info(f"Initializing question pool for chat {chat_id}")
-                self._initialize_available_questions(chat_id)
-
-            # Get the next question index from the shuffled list
-            question_index = self.available_questions[chat_id].pop()
-            question = self.questions[question_index]
-
+            # Use database questions (with IDs) for chat-specific selection
+            db_questions = self.db.get_all_questions()
+            if not db_questions:
+                # Fallback to JSON if database is empty
+                if chat_id not in self.available_questions or not self.available_questions[chat_id]:
+                    logger.info(f"Initializing question pool for chat {chat_id}")
+                    self._initialize_available_questions(chat_id)
+                
+                question_index = self.available_questions[chat_id].pop()
+                question = self.questions[question_index]
+                
+                if not self.available_questions[chat_id]:
+                    logger.info(f"Reset question pool for chat {chat_id}")
+                    self._initialize_available_questions(chat_id)
+                
+                logger.info(f"Selected question {question_index} for chat {chat_id}. "
+                           f"Question text: {question['question'][:30]}... "
+                           f"Remaining questions: {len(self.available_questions[chat_id])}")
+                return question
+            
+            # Convert DB questions to proper format
+            formatted_questions = []
+            for q in db_questions:
+                formatted_questions.append({
+                    'id': q['id'],
+                    'question': q['question'],
+                    'options': json.loads(q['options']) if isinstance(q['options'], str) else q['options'],
+                    'correct_answer': q['correct_answer']
+                })
+            
+            # Filter out recently used questions
+            available_questions = [q for q in formatted_questions if q['question'] not in self.recent_questions.get(chat_id, [])]
+            
+            if not available_questions:
+                # All questions used, reset and use any question
+                available_questions = formatted_questions
+                logger.info(f"Reset recent questions for chat {chat_id}")
+            
+            selected = random.choice(available_questions)
+            
             # Track this question
-            self.recent_questions[chat_id].append(question['question'])
-            self.last_question_time[chat_id][question['question']] = datetime.now()
-
-            # If we've used all questions, reset the pool
-            if not self.available_questions[chat_id]:
-                logger.info(f"Reset question pool for chat {chat_id}")
-                self._initialize_available_questions(chat_id)
-
-            logger.info(f"Selected question {question_index} for chat {chat_id}. "
-                       f"Question text: {question['question'][:30]}... "
-                       f"Remaining questions: {len(self.available_questions[chat_id])}")
-            return question
+            self.recent_questions[chat_id].append(selected['question'])
+            self.last_question_time[chat_id][selected['question']] = datetime.now()
+            
+            logger.info(f"Selected question {selected.get('id', 'unknown')} for chat {chat_id}. "
+                       f"Question text: {selected['question'][:30]}... "
+                       f"Remaining questions: {len(available_questions) - 1}")
+            return selected
 
         except Exception as e:
             logger.error(f"Error in get_random_question: {e}\n{traceback.format_exc()}")
