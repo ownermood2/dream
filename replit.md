@@ -50,6 +50,7 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
 -   **Auto Quiz System**: Sends automated quizzes to groups every 30 minutes. Users can manually request quizzes in PM using /quiz command.
 -   **Universal PM Tracking**: All user interactions in private messages are tracked for better targeting and analytics.
 -   **Interactive UX Features**:
+    - **Championship Mode**: `/championship` launches a 20-question competitive quiz in 2 rounds of 10 questions each. Features interactive inline keyboard with A/B/C/D answer buttons, Next/Back navigation, round transitions, cumulative scoring, and final results with rank. PM-only for smooth experience. Includes is_championship database flag for tracking.
     - **Leaderboard Command**: `/leaderboard` displays top 10 quiz champions with medals, scores, and accuracy. Auto-cleanup in groups (3-second delay). 60-second caching for performance.
     - **Post-Quiz Action Buttons**: After answering quizzes in private chats, users see 4 action buttons: Play Again, My Stats, Leaderboard, and Categories for seamless navigation.
     - **Enhanced Help**: Categorized commands (Basic, Quiz, Stats, Developer) with emojis, examples, and helpful tips for better discoverability.

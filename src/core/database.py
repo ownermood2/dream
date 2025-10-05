@@ -309,6 +309,10 @@ class DatabaseManager:
                 )
             '''))
             
+            if not self._column_exists(cursor, 'quiz_history', 'is_championship'):
+                cursor.execute('ALTER TABLE quiz_history ADD COLUMN is_championship INTEGER DEFAULT 0')
+                logger.info("Added is_championship column to quiz_history table")
+            
             cursor.execute(self._adapt_sql('''
                 CREATE TABLE IF NOT EXISTS broadcasts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -982,7 +986,7 @@ class DatabaseManager:
             ''', (chat_id,))
     
     def record_quiz_answer(self, user_id: int, chat_id: int, question_id: int, 
-                          question_text: str, user_answer: int, correct_answer: int):
+                          question_text: str, user_answer: int, correct_answer: int, is_championship: bool = False):
         """Record a quiz answer in history.
         
         Args:
@@ -992,20 +996,22 @@ class DatabaseManager:
             question_text (str): Text of the question.
             user_answer (int): Index of user's answer (0-3).
             correct_answer (int): Index of correct answer (0-3).
+            is_championship (bool): Whether this answer is from championship mode. Defaults to False.
         
         Raises:
             DatabaseError: If insertion fails.
         """
         is_correct = 1 if user_answer == correct_answer else 0
+        is_championship_int = 1 if is_championship else 0
         with self.get_connection() as conn:
             assert conn is not None
             cursor = self._get_cursor(conn)
             assert cursor is not None
             self._execute(cursor, '''
                 INSERT INTO quiz_history (user_id, chat_id, question_id, question_text, 
-                                        user_answer, correct_answer, is_correct)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (user_id, chat_id, question_id, question_text, user_answer, correct_answer, is_correct))
+                                        user_answer, correct_answer, is_correct, is_championship)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (user_id, chat_id, question_id, question_text, user_answer, correct_answer, is_correct, is_championship_int))
     
     def get_stats_summary(self) -> Dict:
         """Get comprehensive statistics summary - OPTIMIZED: reduced 11 queries to 3 queries"""
