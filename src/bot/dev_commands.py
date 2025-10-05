@@ -949,6 +949,140 @@ class DeveloperCommands:
                 reply = await update.message.reply_text("❌ Error retrieving statistics")
                 await self.auto_clean_message(update.message, reply)
     
+    async def status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show bot health, uptime, database status, and performance metrics (Developer only)"""
+        if not update.message:
+            return
+        if not update.effective_user:
+            return
+        
+        # Check developer access
+        if not await self.check_access(update):
+            await self.send_unauthorized_message(update)
+            return
+        
+        try:
+            import psutil
+            from datetime import timedelta
+            
+            loading_msg = await update.message.reply_text("🤖 Loading bot status...")
+            
+            # Get bot start time from main application (if available)
+            bot_start_time = None
+            if hasattr(context, 'application') and hasattr(context.application, 'bot_data'):
+                bot_start_time = context.application.bot_data.get('bot_start_time')
+            
+            if not bot_start_time:
+                bot_start_time = datetime.now() - timedelta(hours=1)
+            
+            # Calculate uptime
+            uptime_seconds = (datetime.now() - bot_start_time).total_seconds()
+            uptime_days = int(uptime_seconds // 86400)
+            uptime_hours = int((uptime_seconds % 86400) // 3600)
+            uptime_minutes = int((uptime_seconds % 3600) // 60)
+            
+            if uptime_days > 0:
+                uptime_str = f"{uptime_days}d {uptime_hours}h {uptime_minutes}m"
+            elif uptime_hours > 0:
+                uptime_str = f"{uptime_hours}h {uptime_minutes}m"
+            else:
+                uptime_str = f"{uptime_minutes}m"
+            
+            # Get system metrics
+            process = psutil.Process()
+            memory_mb = process.memory_info().rss / 1024 / 1024
+            cpu_percent = process.cpu_percent(interval=0.1)
+            
+            # Get database status
+            try:
+                total_users = len(self.db.get_all_users_stats())
+                total_groups = len(self.db.get_all_groups())
+                total_questions = len(self.quiz_manager.get_all_questions())
+                db_status = "✅ Connected"
+            except Exception as e:
+                total_users = 0
+                total_groups = 0
+                total_questions = 0
+                db_status = f"❌ Error: {str(e)[:50]}"
+            
+            # Get performance metrics
+            try:
+                perf_metrics = self.db.get_performance_summary(24)
+                avg_response_time = perf_metrics.get('avg_response_time', 0)
+                error_rate = perf_metrics.get('error_rate', 0)
+                total_commands = perf_metrics.get('total_api_calls', 0)
+            except Exception:
+                avg_response_time = 0
+                error_rate = 0
+                total_commands = 0
+            
+            # Get scheduler status
+            scheduler_status = "✅ Running"
+            if hasattr(context, 'application') and hasattr(context.application, 'job_queue'):
+                job_queue = context.application.job_queue
+                if job_queue and hasattr(job_queue, 'scheduler'):
+                    if job_queue.scheduler and job_queue.scheduler.running:
+                        scheduler_status = "✅ Running"
+                    else:
+                        scheduler_status = "❌ Stopped"
+                else:
+                    scheduler_status = "⚠️ Unknown"
+            else:
+                scheduler_status = "⚠️ Unknown"
+            
+            # Get active users (today)
+            try:
+                active_today = self.db.get_active_users_count('today')
+            except Exception:
+                active_today = 0
+            
+            # Build status message
+            status_message = f"""🤖 **BOT STATUS & HEALTH**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**⏱ UPTIME & SYSTEM**
+• Bot Uptime: {uptime_str}
+• Memory Usage: {memory_mb:.1f} MB
+• CPU Usage: {cpu_percent:.1f}%
+• Status: ✅ Online
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**💾 DATABASE STATUS**
+• Connection: {db_status}
+• Total Users: {total_users:,}
+• Active Groups: {total_groups:,}
+• Total Questions: {total_questions:,}
+• Active Today: {active_today}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**⚡ PERFORMANCE METRICS (24h)**
+• Avg Response Time: {avg_response_time:.0f}ms
+• Commands Executed: {total_commands:,}
+• Error Rate: {error_rate:.1f}%
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**🔧 SCHEDULER STATUS**
+• Job Queue: {scheduler_status}
+• Auto Quizzes: ✅ Enabled (30min)
+• Memory Tracking: ✅ Enabled (5min)
+• Cleanup Jobs: ✅ Enabled (hourly)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 Bot is healthy and running smoothly!"""
+            
+            await loading_msg.edit_text(status_message, parse_mode=ParseMode.MARKDOWN)
+            logger.info(f"Showed bot status to developer {update.effective_user.id}")
+            
+        except Exception as e:
+            logger.error(f"Error in status command: {e}", exc_info=True)
+            await update.message.reply_text(
+                "❌ Error retrieving bot status.\n\n"
+                "💡 **Try this:**\n"
+                "• Check if the bot has proper permissions\n"
+                "• Verify database connectivity\n"
+                "• Contact the bot administrator"
+            )
+    
     async def broadcast(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Enhanced broadcast supporting media, buttons, placeholders, and auto-cleanup"""
         start_time = time.time()

@@ -497,6 +497,7 @@ class TelegramQuizBot:
             self.application.add_handler(CommandHandler("quiz", self.quiz_command))
             self.application.add_handler(CommandHandler("category", self.category))
             self.application.add_handler(CommandHandler("mystats", self.mystats))
+            self.application.add_handler(CommandHandler("leaderboard", self.leaderboard_command))
 
             # Developer commands (legacy - keeping existing)
             self.application.add_handler(CommandHandler("addquiz", self.addquiz))
@@ -508,6 +509,7 @@ class TelegramQuizBot:
             self.application.add_handler(CommandHandler("delquiz_confirm", self.dev_commands.delquiz_confirm))
             self.application.add_handler(CommandHandler("dev", self.dev_commands.dev))
             self.application.add_handler(CommandHandler("stats", self.stats_command))
+            self.application.add_handler(CommandHandler("status", self.dev_commands.status))
             self.application.add_handler(CommandHandler("broadcast", self.dev_commands.broadcast))
             self.application.add_handler(CommandHandler("broadcast_confirm", self.dev_commands.broadcast_confirm))
             self.application.add_handler(CommandHandler("delbroadcast", self.dev_commands.delbroadcast))
@@ -533,6 +535,12 @@ class TelegramQuizBot:
             self.application.add_handler(CallbackQueryHandler(
                 self.handle_start_callback,
                 pattern="^(start_quiz|my_stats|help)$"
+            ))
+            
+            # Add quiz action callback handler
+            self.application.add_handler(CallbackQueryHandler(
+                self.handle_quiz_action_callback,
+                pattern="^(quiz_play_again|quiz_my_stats|quiz_leaderboard|quiz_categories)$"
             ))
             
             if not self.application or not self.application.job_queue:
@@ -641,6 +649,7 @@ class TelegramQuizBot:
             self.application.add_handler(CommandHandler("quiz", self.quiz_command))
             self.application.add_handler(CommandHandler("category", self.category))
             self.application.add_handler(CommandHandler("mystats", self.mystats))
+            self.application.add_handler(CommandHandler("leaderboard", self.leaderboard_command))
 
             # Developer commands (legacy - keeping existing)
             self.application.add_handler(CommandHandler("addquiz", self.addquiz))
@@ -652,6 +661,7 @@ class TelegramQuizBot:
             self.application.add_handler(CommandHandler("delquiz_confirm", self.dev_commands.delquiz_confirm))
             self.application.add_handler(CommandHandler("dev", self.dev_commands.dev))
             self.application.add_handler(CommandHandler("stats", self.stats_command))
+            self.application.add_handler(CommandHandler("status", self.dev_commands.status))
             self.application.add_handler(CommandHandler("broadcast", self.dev_commands.broadcast))
             self.application.add_handler(CommandHandler("broadcast_confirm", self.dev_commands.broadcast_confirm))
             self.application.add_handler(CommandHandler("delbroadcast", self.dev_commands.delbroadcast))
@@ -677,6 +687,12 @@ class TelegramQuizBot:
             self.application.add_handler(CallbackQueryHandler(
                 self.handle_start_callback,
                 pattern="^(start_quiz|my_stats|help)$"
+            ))
+            
+            # Add quiz action callback handler
+            self.application.add_handler(CallbackQueryHandler(
+                self.handle_quiz_action_callback,
+                pattern="^(quiz_play_again|quiz_my_stats|quiz_leaderboard|quiz_categories)$"
             ))
 
             if not self.application or not self.application.job_queue:
@@ -1061,6 +1077,35 @@ class TelegramQuizBot:
                 is_correct=is_correct
             )
             logger.info(f"Recorded quiz attempt for user {answer.user.id} in chat {chat_id} (correct: {is_correct})")
+            
+            # Send inline keyboard with action buttons after quiz completion (in PM only)
+            try:
+                chat = await context.bot.get_chat(chat_id)
+                if chat.type == 'private':
+                    result_emoji = "✅" if is_correct else "❌"
+                    result_text = "Correct!" if is_correct else "Wrong!"
+                    
+                    keyboard = [
+                        [
+                            InlineKeyboardButton("🎯 Play Again", callback_data="quiz_play_again"),
+                            InlineKeyboardButton("📊 My Stats", callback_data="quiz_my_stats")
+                        ],
+                        [
+                            InlineKeyboardButton("🏆 Leaderboard", callback_data="quiz_leaderboard"),
+                            InlineKeyboardButton("📚 Categories", callback_data="quiz_categories")
+                        ]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await context.bot.send_message(
+                        chat_id=answer.user.id,
+                        text=f"{result_emoji} **{result_text}**\n\nWhat would you like to do next?",
+                        reply_markup=reply_markup,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    logger.info(f"Sent quiz completion buttons to user {answer.user.id}")
+            except Exception as btn_error:
+                logger.debug(f"Could not send quiz completion buttons: {btn_error}")
 
         except Exception as e:
             logger.error(f"Error handling answer: {str(e)}\n{traceback.format_exc()}")
@@ -1100,15 +1145,16 @@ class TelegramQuizBot:
             logger.error(f"Error tracking PM interaction for user {user_id}: {e}")
 
     async def send_friendly_error_message(self, chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Send a user-friendly error message"""
+        """Send a user-friendly error message with helpful suggestions"""
         error_message = """😅 Oops! Something went a bit wrong.
 
-Don't worry though! You can:
-1️⃣ Try the command again
-2️⃣ Use /help to see all commands
-3️⃣ Start a new quiz with /quiz
+💡 **Here's what you can try:**
+• Try the command again
+• Use /help to see all available commands
+• Start a quiz with /quiz
+• Browse topics with /category
 
-We're here to help! 🌟"""
+Need more help? We're here for you! 🌟"""
         
         try:
             await context.bot.send_message(
@@ -1372,47 +1418,84 @@ We're here to help! 🌟"""
             bot_link = f"[{bot_name}](https://t.me/{context.bot.username})"
             
             help_text = f"""╔══════════════════════════════════╗
-║ ✨ {bot_name} - Command Center ║
+║   ✨ {bot_name} - Help Center   ║
 ╚══════════════════════════════════╝
 
-📑 Welcome {user_name_link}!
-Here's your complete command guide:
+👋 Welcome {user_name_link}!
+Your complete command guide is here:
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**📌 BASIC COMMANDS**
 
-🎮 𝗤𝘂𝗶𝘇 𝗖𝗼𝗺𝗺𝗮𝗻𝗱𝘀
-➤ /start       🚀 Begin your quiz journey
-➤ /quiz        🎲 Take a quiz now
-➤ /category    📖 Explore quiz topics
+/start - 🚀 Start your quiz journey
+    _Begin using the bot and see welcome message_
 
-📊 𝗦𝘁𝗮𝘁𝘀 & 𝗥𝗮𝗻𝗸𝗶𝗻𝗴𝘀
-➤ /mystats       📈 View your performance"""
+/help - 📖 Show this help menu
+    _View all available commands and how to use them_
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**🎯 QUIZ COMMANDS**
+
+/quiz - 🎲 Get a random quiz
+    _Take a quiz immediately on any topic_
+
+/category - 📚 Browse quiz categories
+    _Explore topics: GK, Current Affairs, Science & more_
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**📊 STATS COMMANDS**
+
+/mystats - 📈 View your performance
+    _See your score, accuracy, rank, and progress_
+
+/leaderboard - 🏆 Top quiz champions
+    _View the top 10 players and their scores_
+"""
 
             # Add developer commands only for developers
             if is_dev:
                 help_text += """
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**🔐 DEVELOPER COMMANDS**
 
-🔐 𝗗𝗲𝘃𝗲𝗹𝗼𝗽𝗲𝗿 𝗖𝗼𝗺𝗺𝗮𝗻𝗱𝘀
-➤ /dev            👑 Manage developer roles
-➤ /stats          📊 Real-time bot stats
-➤ /broadcast      📣 Send announcements
-➤ /delbroadcast   🗑️ Delete latest broadcast
-➤ /addquiz        ➕ Add quiz questions
-➤ /editquiz       ✏️ Edit existing questions
-➤ /delquiz        🗑️ Delete a quiz
-➤ /totalquiz      🔢 Total quiz count
+/dev - 👑 Manage developer access
+    _Add or remove developer privileges_
+
+/stats - 📊 Bot analytics dashboard
+    _Real-time stats, performance, and activity_
+
+/status - 🤖 Bot health & system info
+    _Uptime, memory, database, and scheduler status_
+
+/broadcast - 📣 Send announcements
+    _Broadcast messages to all users or groups_
+
+/addquiz - ➕ Add new questions
+    _Add quiz questions to the database_
+
+/editquiz - ✏️ Edit questions
+    _Modify existing quiz questions_
+
+/delquiz - 🗑️ Delete questions
+    _Remove quiz questions from database_
+
+/totalquiz - 🔢 Total quiz count
+    _View total number of available quizzes_
 """
 
             help_text += f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**💡 TIPS & FEATURES**
 
-💡 𝗧𝗶𝗽𝘀 & 𝗧𝗿𝗶𝗰𝗸𝘀
-• 🕒 Auto quizzes every 30 mins in groups
-• 🤫 PM mode keeps chat clean & simple
-• 🧹 Group mode auto-deletes old quiz messages when sending new ones
-• ⚡ Stats track your progress in real-time
+✨ Auto quizzes every 30 mins in groups
+✨ PM mode for clean, clutter-free experience
+✨ Group mode auto-deletes old quiz messages
+✨ Real-time stats tracking & leaderboards
+✨ Multiple quiz categories to explore
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🔔 Need help? Use /help anytime!
-✨ Conquer the Quiz World with {bot_link}!"""
+💫 Conquer the Quiz World with {bot_link}!"""
 
             # Send help message with markdown for clickable links
             reply_message = await context.bot.send_message(
@@ -1675,6 +1758,152 @@ Ready to begin? Try /quiz now! 🚀"""
             )
             logger.error(f"Error in mystats: {str(e)}\n{traceback.format_exc()}")
             await update.message.reply_text("❌ Error retrieving stats. Please try again.")
+    
+    async def leaderboard_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Show top 10 quiz champions with medals, scores, and accuracy"""
+        if not update.message:
+            return
+        if not update.effective_user:
+            return
+        if not update.effective_chat:
+            return
+        
+        start_time = time.time()
+        try:
+            user = update.effective_user
+            chat = update.effective_chat
+            
+            # Track PM access
+            self._track_pm_access(user.id, chat.type)
+            
+            # Check cooldown (only in groups)
+            is_allowed, remaining = self.check_user_command_cooldown(
+                user.id, "leaderboard", chat.type
+            )
+            if not is_allowed:
+                await update.message.reply_text(
+                    f"⏰ Please wait {remaining} seconds before using this command again.\n\n"
+                    f"💡 Tip: Use /help to see all commands"
+                )
+                return
+            
+            # Log command
+            self._queue_activity_log(
+                activity_type='command',
+                user_id=user.id,
+                chat_id=chat.id,
+                username=user.username or "",
+                chat_title=getattr(chat, 'title', None),
+                command='/leaderboard',
+                success=True
+            )
+            
+            # Send loading message
+            loading_msg = await update.message.reply_text("🏆 Loading leaderboard...")
+            
+            # Get top 10 from cached leaderboard
+            leaderboard, total_count = self._get_leaderboard_cached(limit=10, offset=0)
+            
+            if not leaderboard:
+                await loading_msg.edit_text(
+                    "🏆 **Leaderboard**\n\n"
+                    "No quiz champions yet! 🎯\n\n"
+                    "Be the first to take a quiz and claim the top spot!\n\n"
+                    "💡 Use /quiz to get started",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                return
+            
+            # Build leaderboard message with medals
+            medals = ["🥇", "🥈", "🥉"]
+            leaderboard_text = "🏆 **TOP QUIZ CHAMPIONS** 🏆\n"
+            leaderboard_text += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            
+            for idx, player in enumerate(leaderboard, 1):
+                # Get medal or rank number
+                if idx <= 3:
+                    rank_display = medals[idx - 1]
+                else:
+                    rank_display = f"{idx}."
+                
+                # Format username (clickable link if first_name available)
+                username = player.get('username', 'Unknown')
+                first_name = player.get('first_name')
+                user_id = player.get('user_id')
+                
+                if first_name and user_id:
+                    user_display = f"[{first_name}](tg://user?id={user_id})"
+                else:
+                    user_display = username
+                
+                # Get stats
+                score = player.get('score', 0)
+                correct = player.get('correct_answers', 0)
+                total_quizzes = player.get('total_quizzes', 0)
+                accuracy = player.get('accuracy', 0.0)
+                
+                # Format entry
+                leaderboard_text += f"{rank_display} **{user_display}**\n"
+                leaderboard_text += f"    💯 Score: {score} | ✅ Correct: {correct}/{total_quizzes} | 🎯 Accuracy: {accuracy}%\n\n"
+            
+            leaderboard_text += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            leaderboard_text += f"📊 Total Players: {total_count:,}\n\n"
+            leaderboard_text += "💡 Keep playing to climb the ranks!"
+            
+            # Add inline keyboard
+            keyboard = [
+                [
+                    InlineKeyboardButton("🎯 Take Quiz", callback_data="quiz_play_again"),
+                    InlineKeyboardButton("📊 My Stats", callback_data="quiz_my_stats")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Send leaderboard
+            await loading_msg.edit_text(
+                leaderboard_text,
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.MARKDOWN
+            )
+            
+            response_time = int((time.time() - start_time) * 1000)
+            logger.info(f"Showed leaderboard to user {user.id} in {response_time}ms")
+            
+            # Log performance
+            self.db.log_performance_metric(
+                metric_type='response_time',
+                metric_name='/leaderboard',
+                value=response_time,
+                unit='ms'
+            )
+            
+            # Auto-delete command and reply in groups after 3 seconds
+            if chat.type != "private":
+                asyncio.create_task(self._delete_messages_after_delay(
+                    chat_id=chat.id,
+                    message_ids=[update.message.message_id, loading_msg.message_id],
+                    delay=3
+                ))
+        
+        except Exception as e:
+            response_time = int((time.time() - start_time) * 1000)
+            self._queue_activity_log(
+                activity_type='error',
+                user_id=update.effective_user.id if update.effective_user else None,
+                chat_id=update.effective_chat.id,
+                command='/leaderboard',
+                details={'error': str(e)},
+                success=False,
+                response_time_ms=response_time
+            )
+            logger.error(f"Error in leaderboard: {str(e)}\n{traceback.format_exc()}")
+            await update.message.reply_text(
+                "❌ Oops! Couldn't load the leaderboard.\n\n"
+                "💡 **Try this:**\n"
+                "• Use /help to see other commands\n"
+                "• Try /mystats to see your personal stats\n"
+                "• Contact support if the issue persists"
+            )
 
     async def addquiz(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not update.message:
@@ -2721,6 +2950,195 @@ Start playing quizzes to track your progress.
         except Exception as e:
             logger.error(f"Error in handle_stats_callback: {e}", exc_info=True)
             await query.edit_message_text("❌ Error processing stats. Please try again.")
+    
+    async def handle_quiz_action_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle callbacks from quiz action buttons (Play Again, My Stats, Leaderboard, Categories)"""
+        query = update.callback_query
+        if not query:
+            return
+        
+        await query.answer()
+        
+        try:
+            # Track PM access for callback handlers
+            if update.effective_user and update.effective_chat:
+                self._track_pm_access(update.effective_user.id, update.effective_chat.type)
+            
+            if query.data == "quiz_play_again":
+                # Send a new quiz to the user
+                if not update.effective_chat:
+                    return
+                await self.send_quiz(update.effective_chat.id, context, chat_type=update.effective_chat.type)
+                await query.edit_message_text("🎯 New quiz sent! Good luck! 🚀")
+                logger.info(f"Sent new quiz from callback for user {update.effective_user.id}")
+                
+            elif query.data == "quiz_my_stats":
+                # Show user stats
+                if not update.effective_user:
+                    return
+                    
+                stats = self.db.get_user_quiz_stats_realtime(update.effective_user.id)
+                
+                if not stats or not stats.get('total_quizzes', 0):
+                    no_stats_text = """📊 **Your Stats**
+
+🎯 You haven't taken any quizzes yet!
+
+Get started:
+• Use /quiz to try your first quiz
+• Track your progress here
+• Compete with others
+
+Ready to begin? 🚀"""
+                    await query.edit_message_text(no_stats_text, parse_mode=ParseMode.MARKDOWN)
+                    return
+                
+                # Get user rank
+                user_rank = self.db.get_user_rank(update.effective_user.id)
+                if user_rank == 0:
+                    user_rank = 'N/A'
+                
+                # Format stats
+                user = update.effective_user
+                username = f"[{user.first_name}](tg://user?id={user.id})"
+                quiz_attempts = stats.get('total_quizzes', 0)
+                correct_answers = stats.get('correct_answers', 0)
+                wrong_answers = stats.get('wrong_answers', 0)
+                accuracy = stats.get('accuracy', 0.0)
+                
+                stats_message = f"""📊 **Stats for {username}**
+━━━━━━━━━━━━━━━━━━━━━━
+
+🏆 Rank: #{user_rank}
+🎯 Total Quizzes: {quiz_attempts}
+✅ Correct: {correct_answers}
+❌ Wrong: {wrong_answers}
+📈 Accuracy: {accuracy}%
+
+━━━━━━━━━━━━━━━━━━━━━━
+💡 Keep playing to improve your rank!"""
+                
+                # Add keyboard
+                keyboard = [
+                    [
+                        InlineKeyboardButton("🎯 Play Again", callback_data="quiz_play_again"),
+                        InlineKeyboardButton("🏆 Leaderboard", callback_data="quiz_leaderboard")
+                    ]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await query.edit_message_text(
+                    stats_message,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                logger.info(f"Showed stats from callback for user {update.effective_user.id}")
+                
+            elif query.data == "quiz_leaderboard":
+                # Show leaderboard
+                leaderboard, total_count = self._get_leaderboard_cached(limit=10, offset=0)
+                
+                if not leaderboard:
+                    await query.edit_message_text(
+                        "🏆 **Leaderboard**\n\n"
+                        "No quiz champions yet! 🎯\n\n"
+                        "Be the first to take a quiz and claim the top spot!\n\n"
+                        "💡 Use /quiz to get started",
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    return
+                
+                # Build leaderboard message
+                medals = ["🥇", "🥈", "🥉"]
+                leaderboard_text = "🏆 **TOP QUIZ CHAMPIONS** 🏆\n"
+                leaderboard_text += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                
+                for idx, player in enumerate(leaderboard, 1):
+                    if idx <= 3:
+                        rank_display = medals[idx - 1]
+                    else:
+                        rank_display = f"{idx}."
+                    
+                    username = player.get('username', 'Unknown')
+                    first_name = player.get('first_name')
+                    user_id = player.get('user_id')
+                    
+                    if first_name and user_id:
+                        user_display = f"[{first_name}](tg://user?id={user_id})"
+                    else:
+                        user_display = username
+                    
+                    score = player.get('score', 0)
+                    correct = player.get('correct_answers', 0)
+                    total_quizzes = player.get('total_quizzes', 0)
+                    accuracy = player.get('accuracy', 0.0)
+                    
+                    leaderboard_text += f"{rank_display} **{user_display}**\n"
+                    leaderboard_text += f"    💯 {score} | ✅ {correct}/{total_quizzes} | 🎯 {accuracy}%\n\n"
+                
+                leaderboard_text += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                leaderboard_text += f"📊 Total Players: {total_count:,}\n\n"
+                leaderboard_text += "💡 Keep playing to climb the ranks!"
+                
+                # Add keyboard
+                keyboard = [
+                    [
+                        InlineKeyboardButton("🎯 Take Quiz", callback_data="quiz_play_again"),
+                        InlineKeyboardButton("📊 My Stats", callback_data="quiz_my_stats")
+                    ]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await query.edit_message_text(
+                    leaderboard_text,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                logger.info(f"Showed leaderboard from callback for user {update.effective_user.id}")
+                
+            elif query.data == "quiz_categories":
+                # Show categories
+                category_text = """📚 **QUIZ CATEGORIES**
+━━━━━━━━━━━━━━━━━━━━━━━
+
+Choose a category to explore:
+
+🌍 General Knowledge
+📰 Current Affairs
+📚 Static GK
+🔬 Science & Technology
+📜 History
+🗺 Geography
+💰 Economics
+🏛 Political Science
+📖 Constitution
+⚖️ Constitution & Law
+🎭 Arts & Literature
+🎮 Sports & Games
+
+──────────────────────────────
+💡 Use /category in the main chat for more info!"""
+                
+                # Add keyboard
+                keyboard = [
+                    [
+                        InlineKeyboardButton("🎯 Take Quiz", callback_data="quiz_play_again"),
+                        InlineKeyboardButton("📊 My Stats", callback_data="quiz_my_stats")
+                    ]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await query.edit_message_text(
+                    category_text,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                logger.info(f"Showed categories from callback for user {update.effective_user.id}")
+                
+        except Exception as e:
+            logger.error(f"Error in handle_quiz_action_callback: {e}", exc_info=True)
+            if query:
+                await query.answer("❌ Error processing request. Please try again!", show_alert=True)
     
     async def _show_detailed_user_stats(self, query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Show detailed user statistics"""
