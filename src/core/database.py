@@ -584,6 +584,9 @@ class DatabaseManager:
     def delete_question(self, question_id: int) -> bool:
         """Delete a quiz question by ID.
         
+        Deletes the question and all related quiz history records.
+        This prevents foreign key constraint violations.
+        
         Args:
             question_id (int): ID of the question to delete
         
@@ -597,6 +600,11 @@ class DatabaseManager:
             assert conn is not None
             cursor = self._get_cursor(conn)
             assert cursor is not None
+            
+            # Delete related quiz history first to avoid foreign key constraint
+            self._execute(cursor, 'DELETE FROM quiz_history WHERE question_id = ?', (question_id,))
+            
+            # Now delete the question
             self._execute(cursor, 'DELETE FROM questions WHERE id = ?', (question_id,))
             return cursor.rowcount > 0
     
