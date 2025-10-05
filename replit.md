@@ -49,6 +49,12 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
 -   **Broadcast System**: Supports various broadcast types (text, media, buttons) with placeholders, live tracking, and auto-cleanup.
 -   **Auto Quiz System**: Sends automated quizzes to groups every 30 minutes. Users can manually request quizzes in PM using /quiz command.
 -   **Universal PM Tracking**: All user interactions in private messages are tracked for better targeting and analytics.
+-   **Interactive UX Features**:
+    - **Leaderboard Command**: `/leaderboard` displays top 10 quiz champions with medals, scores, and accuracy. Auto-cleanup in groups (3-second delay). 60-second caching for performance.
+    - **Post-Quiz Action Buttons**: After answering quizzes in private chats, users see 4 action buttons: Play Again, My Stats, Leaderboard, and Categories for seamless navigation.
+    - **Enhanced Help**: Categorized commands (Basic, Quiz, Stats, Developer) with emojis, examples, and helpful tips for better discoverability.
+    - **Status Monitoring**: `/status` command (developer-only) shows bot health, uptime, database stats, performance metrics, and scheduler status.
+    - **Friendly Error Messages**: All errors include actionable guidance and helpful suggestions (e.g., "Try /help for available commands").
 
 ## System Design Choices
 -   **Production-Ready Deployment**: Supports both webhook and polling modes.
