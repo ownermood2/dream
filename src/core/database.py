@@ -2812,6 +2812,147 @@ class DatabaseManager:
             logger.error(f"Error cleaning up old performance metrics: {e}")
             return 0
     
+    def get_metrics_summary(self) -> Dict:
+        """
+        Get comprehensive metrics for Prometheus /metrics endpoint
+        
+        Returns:
+            Dictionary with all metrics required for Prometheus monitoring including:
+            - total_users: Total registered users
+            - active_users_24h: Active users in last 24 hours
+            - active_users_7d: Active users in last 7 days
+            - total_groups: Total registered groups
+            - active_groups: Active groups
+            - total_questions: Total quiz questions
+            - quiz_attempts_24h: Quiz attempts in last 24 hours
+            - quiz_accuracy_24h: Quiz accuracy percentage in last 24 hours
+            - avg_response_time_24h: Average response time in milliseconds
+            - commands_24h: Commands executed in last 24 hours
+            - error_rate_24h: Error rate percentage in last 24 hours
+            - rate_limit_violations_24h: Rate limit violations (currently 0)
+            - total_broadcasts: Total broadcasts sent
+            - broadcast_success_rate: Broadcast success rate percentage
+        """
+        try:
+            from datetime import timedelta
+            
+            now = datetime.now()
+            day_ago = (now - timedelta(hours=24)).strftime('%Y-%m-%d %H:%M:%S')
+            week_ago = (now - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+            
+            with self.get_connection() as conn:
+                assert conn is not None
+                cursor = self._get_cursor(conn)
+                assert cursor is not None
+                
+                cursor.execute('SELECT COUNT(*) as count FROM users')
+                total_users = cursor.fetchone()['count']
+                
+                cursor.execute('SELECT COUNT(*) as count FROM groups WHERE is_active = 1')
+                active_groups = cursor.fetchone()['count']
+                
+                cursor.execute('SELECT COUNT(*) as count FROM groups')
+                total_groups = cursor.fetchone()['count']
+                
+                cursor.execute('SELECT COUNT(*) as count FROM questions')
+                total_questions = cursor.fetchone()['count']
+                
+                self._execute(cursor, '''
+                    SELECT COUNT(DISTINCT user_id) as count 
+                    FROM activity_logs 
+                    WHERE user_id IS NOT NULL AND timestamp >= ?
+                ''', (day_ago,))
+                active_users_24h = cursor.fetchone()['count']
+                
+                self._execute(cursor, '''
+                    SELECT COUNT(DISTINCT user_id) as count 
+                    FROM activity_logs 
+                    WHERE user_id IS NOT NULL AND timestamp >= ?
+                ''', (week_ago,))
+                active_users_7d = cursor.fetchone()['count']
+                
+                self._execute(cursor, '''
+                    SELECT COUNT(*) as total, SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) as correct
+                    FROM quiz_history
+                    WHERE answered_at >= ?
+                ''', (day_ago,))
+                row = cursor.fetchone()
+                quiz_attempts_24h = row['total'] or 0
+                correct_answers = row['correct'] or 0
+                quiz_accuracy_24h = round((correct_answers / max(quiz_attempts_24h, 1)) * 100, 2)
+                
+                self._execute(cursor, '''
+                    SELECT AVG(response_time_ms) as avg_time 
+                    FROM activity_logs 
+                    WHERE response_time_ms IS NOT NULL AND timestamp >= ?
+                ''', (day_ago,))
+                row = cursor.fetchone()
+                avg_response_time_24h = round(row['avg_time'], 2) if row and row['avg_time'] else 0
+                
+                self._execute(cursor, '''
+                    SELECT COUNT(*) as count 
+                    FROM activity_logs 
+                    WHERE command IS NOT NULL AND timestamp >= ?
+                ''', (day_ago,))
+                commands_24h = cursor.fetchone()['count']
+                
+                self._execute(cursor, '''
+                    SELECT COUNT(*) as total, SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as errors
+                    FROM activity_logs 
+                    WHERE timestamp >= ?
+                ''', (day_ago,))
+                row = cursor.fetchone()
+                total_activities = row['total'] or 0
+                total_errors = row['errors'] or 0
+                error_rate_24h = round((total_errors / max(total_activities, 1)) * 100, 2)
+                
+                cursor.execute('''
+                    SELECT COUNT(*) as total_broadcasts, 
+                           SUM(sent_count) as total_sent,
+                           SUM(total_targets) as total_targets
+                    FROM broadcast_logs
+                ''')
+                row = cursor.fetchone()
+                total_broadcasts = row['total_broadcasts'] or 0
+                total_sent = row['total_sent'] or 0
+                total_targets = row['total_targets'] or 0
+                broadcast_success_rate = round((total_sent / max(total_targets, 1)) * 100, 2)
+                
+                return {
+                    'total_users': total_users,
+                    'active_users_24h': active_users_24h,
+                    'active_users_7d': active_users_7d,
+                    'total_groups': total_groups,
+                    'active_groups': active_groups,
+                    'total_questions': total_questions,
+                    'quiz_attempts_24h': quiz_attempts_24h,
+                    'quiz_accuracy_24h': quiz_accuracy_24h,
+                    'avg_response_time_24h': avg_response_time_24h,
+                    'commands_24h': commands_24h,
+                    'error_rate_24h': error_rate_24h,
+                    'rate_limit_violations_24h': 0,
+                    'total_broadcasts': total_broadcasts,
+                    'broadcast_success_rate': broadcast_success_rate
+                }
+        except Exception as e:
+            logger.error(f"Error getting metrics summary: {e}")
+            return {
+                'total_users': 0,
+                'active_users_24h': 0,
+                'active_users_7d': 0,
+                'total_groups': 0,
+                'active_groups': 0,
+                'total_questions': 0,
+                'quiz_attempts_24h': 0,
+                'quiz_accuracy_24h': 0.0,
+                'avg_response_time_24h': 0.0,
+                'commands_24h': 0,
+                'error_rate_24h': 0.0,
+                'rate_limit_violations_24h': 0,
+                'total_broadcasts': 0,
+                'broadcast_success_rate': 0.0
+            }
+    
     def get_trending_commands(self, days: int = 7, limit: int = 10) -> List[Dict]:
         """
         Get most used commands in the last N days

@@ -38,17 +38,20 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
 ## Frontend Architecture
 -   **Health Check Endpoint**: `/` returns `{"status":"ok"}`.
 -   **Admin Panel**: `/admin` provides a Bootstrap-based web interface for question management.
+-   **Metrics Endpoint**: `/metrics` provides Prometheus-style monitoring with 17 metrics (system, database, performance, broadcast) for Grafana/Prometheus integration. Includes 30-second caching.
 -   **Templating**: Flask's Jinja2 for server-side rendering.
 -   **API Endpoints**: RESTful API for quiz data management.
 
 ## Bot Architecture
--   **Command Handlers**: Structured command processing with cooldowns.
+-   **Command Handlers**: Structured command processing with advanced rate limiting system.
 -   **Access Control**: Role-based access for admin and developer commands.
 -   **Auto-Clean Feature**: Deletes command and reply messages in groups for cleaner chats.
 -   **Statistics Tracking**: Comprehensive user and group activity monitoring with universal PM access tracking.
 -   **Broadcast System**: Supports various broadcast types (text, media, buttons) with placeholders, live tracking, and auto-cleanup.
 -   **Auto Quiz System**: Sends automated quizzes to groups every 30 minutes. Users can manually request quizzes in PM using /quiz command.
 -   **Universal PM Tracking**: All user interactions in private messages are tracked for better targeting and analytics.
+-   **Rate Limiting System**: Three-tier rate limiting (Heavy/Medium/Light commands) with sliding window algorithm, developer bypass, automatic cleanup, and violation logging. Prevents command spam while maintaining smooth UX.
+-   **Quiz Management**: Complete quiz lifecycle management including /addquiz for creation and /editquiz for interactive editing with pagination, field-by-field updates, and audit logging.
 -   **Interactive UX Features**:
     - **Leaderboard Command**: `/leaderboard` displays top 10 quiz champions with medals, scores, and accuracy. Auto-cleanup in groups (3-second delay). 60-second caching for performance.
     - **Post-Quiz Action Buttons**: After answering quizzes in private chats, users see 4 action buttons: Play Again, My Stats, Leaderboard, and Categories for seamless navigation.

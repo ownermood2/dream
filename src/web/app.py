@@ -3,7 +3,8 @@ import logging
 import asyncio
 import threading
 from concurrent.futures import Future
-from flask import Flask, render_template, jsonify, request
+from datetime import datetime
+from flask import Flask, render_template, jsonify, request, Response
 from telegram import Update
 
 logging.basicConfig(level=logging.INFO)
@@ -50,6 +51,7 @@ def create_app():
                 template_folder=os.path.join(root_dir, 'templates'),
                 static_folder=os.path.join(root_dir, 'static'))
     flask_app.secret_key = session_secret
+    flask_app.start_time = datetime.now()
     
     if quiz_manager is None:
         try:
@@ -285,3 +287,52 @@ def delete_question(question_id):
     except Exception as e:
         logger.error(f"Error deleting question {question_id}: {e}")
         return jsonify({"status": "error", "message": "Internal server error"}), 500
+
+@app.route('/metrics')
+def metrics():
+    """Prometheus metrics endpoint"""
+    try:
+        real_app = app._get_real_app()
+        uptime = (datetime.now() - real_app.start_time).total_seconds()
+        
+        import psutil
+        process = psutil.Process()
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        cpu_percent = process.cpu_percent(interval=0.1)
+        
+        if not quiz_manager:
+            logger.error("Quiz manager not initialized for metrics")
+            return Response("# Error: Quiz manager not initialized\n", mimetype='text/plain'), 500
+        
+        metrics_data = quiz_manager.db.get_metrics_summary()
+        
+        lines = []
+        
+        lines.append(f"missquiz_bot_uptime_seconds {uptime:.0f}")
+        lines.append(f"missquiz_bot_memory_usage_mb {memory_mb:.2f}")
+        lines.append(f"missquiz_bot_cpu_percent {cpu_percent:.2f}")
+        
+        lines.append(f"missquiz_users_total {metrics_data['total_users']}")
+        lines.append(f"missquiz_users_active_24h {metrics_data['active_users_24h']}")
+        lines.append(f"missquiz_users_active_7d {metrics_data['active_users_7d']}")
+        lines.append(f"missquiz_groups_total {metrics_data['total_groups']}")
+        lines.append(f"missquiz_groups_active {metrics_data['active_groups']}")
+        lines.append(f"missquiz_quiz_questions_total {metrics_data['total_questions']}")
+        
+        lines.append(f"missquiz_quiz_attempts_24h {metrics_data['quiz_attempts_24h']}")
+        lines.append(f"missquiz_quiz_accuracy_percent_24h {metrics_data['quiz_accuracy_24h']:.2f}")
+        lines.append(f"missquiz_response_time_avg_ms_24h {metrics_data['avg_response_time_24h']:.2f}")
+        lines.append(f"missquiz_commands_executed_24h {metrics_data['commands_24h']}")
+        lines.append(f"missquiz_error_rate_percent_24h {metrics_data['error_rate_24h']:.2f}")
+        lines.append(f"missquiz_rate_limit_violations_24h {metrics_data['rate_limit_violations_24h']}")
+        
+        lines.append(f"missquiz_broadcasts_total {metrics_data['total_broadcasts']}")
+        lines.append(f"missquiz_broadcast_success_rate_percent {metrics_data['broadcast_success_rate']:.2f}")
+        
+        response = Response('\n'.join(lines) + '\n', mimetype='text/plain')
+        response.headers['Cache-Control'] = 'max-age=30'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error generating metrics: {e}")
+        return Response("# Error generating metrics\n", mimetype='text/plain'), 500
