@@ -1650,7 +1650,7 @@ Need more help? We're here for you! 🌟"""
 
 
     async def mystats(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Show personal statistics with proper handling of no data"""
+        """Show personal statistics with premium formatted dashboard"""
         if not update.message:
             return
         if not update.effective_user:
@@ -1670,7 +1670,7 @@ Need more help? We're here for you! 🌟"""
             if not await self.check_rate_limit(update, context, 'mystats'):
                 return
 
-            # OPTIMIZATION 1: Use cached user info update
+            # Use cached user info update
             self._add_or_update_user_cached(
                 user_id=user.id,
                 username=user.username or "",
@@ -1678,7 +1678,7 @@ Need more help? We're here for you! 🌟"""
                 last_name=user.last_name or ""
             )
 
-            # OPTIMIZATION 2: Queue activity log for batch write
+            # Queue activity log for batch write
             self._queue_activity_log(
                 activity_type='command',
                 user_id=user.id,
@@ -1710,36 +1710,32 @@ Ready to begin? Try /quiz now! 🚀"""
                     await loading_msg.edit_text(welcome_text, parse_mode=ParseMode.MARKDOWN)
                     return
 
-                # OPTIMIZATION: Get user rank efficiently without fetching all users
+                # Get user rank efficiently without fetching all users
                 user_rank = self.db.get_user_rank(user.id)
                 if user_rank == 0:
                     user_rank = 'N/A'
                 
-                # Get username display as clickable Telegram profile link
-                username = f"[{user.first_name}](tg://user?id={user.id})"
-                
-                # Format stats according to user's specification
-                quiz_attempts = stats.get('total_quizzes', 0)
+                # Get stats data
+                total_quizzes = stats.get('total_quizzes', 0)
                 correct_answers = stats.get('correct_answers', 0)
                 wrong_answers = stats.get('wrong_answers', 0)
 
-                stats_message = f"""📊 Bot & User Stats Dashboard
-━━━━━━━━━━━━━━━━━━━━━━
-👮 Stats for: {username}
-🏆 Total Quizzes Attempted: • {quiz_attempts}
-💡 Your Rank: • {user_rank}
+                # Premium formatted stats message with Unicode box drawing
+                stats_message = f"""╔════════════════════════════════════╗
+║ 📊  𝗕𝗢𝗧 & 𝗨𝗦𝗘𝗥 𝗦𝗧𝗔𝗧𝗦 𝗗𝗔𝗦𝗛𝗕𝗢𝗔𝗥𝗗 ║
+╚════════════════════════════════════╝
 
-📊 𝗦𝘁𝗮𝘁𝘀 𝗳𝗼𝗿 {username}
-══════════════════
-🎯 𝗣𝗲𝗿𝗳𝗼𝗿𝗺𝗮𝗻𝗰𝗲
-• Total Quizzes: {quiz_attempts}
-• Correct Answers: {correct_answers}
-• Wrong Answers: {wrong_answers}"""
+👤 User: {user.first_name}
+🏆 Rank: #{user_rank}
+🎮 Total Quizzes Attempted: {total_quizzes}
 
-                await loading_msg.edit_text(
-                    stats_message,
-                    parse_mode=ParseMode.MARKDOWN
-                )
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 𝗣𝗘𝗥𝗙𝗢𝗥𝗠𝗔𝗡𝗖𝗘 𝗦𝗧𝗔𝗧𝗦
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Correct Answers: {correct_answers}
+❌ Wrong Answers: {wrong_answers}"""
+
+                await loading_msg.edit_text(stats_message)
                 response_time = int((time.time() - start_time) * 1000)
                 logger.info(f"Showed stats to user {user.id} in {response_time}ms")
                 
@@ -2009,35 +2005,49 @@ Ready to begin? Try /quiz now! 🚀"""
 
             # Add questions and get stats
             stats = self.quiz_manager.add_questions(questions_data, allow_duplicates=allow_duplicates)
-            total_questions = len(self.quiz_manager.get_all_questions())
             
-            # Get database count for verification
-            db_questions = self.db.get_all_questions()
-            db_count = len(db_questions)
-
-            # Format response message with comprehensive feedback
-            duplicate_warning = ""
-            if stats['rejected']['duplicates'] > 0 and not allow_duplicates:
-                duplicate_warning = f"\n\n⚠️ 𝗗𝘂𝗽𝗹𝗶𝗰𝗮𝘁𝗲 𝗪𝗮𝗿𝗻𝗶𝗻𝗴:\n{stats['rejected']['duplicates']} questions were rejected as duplicates.\nUse /addquiz --allow-duplicates to override."
+            # Get user stats from database in real-time
+            user_stats = self.db.get_user_quiz_stats_realtime(update.effective_user.id)
             
-            db_status = "✅" if stats['db_saved'] == stats['added'] else "⚠️"
+            # Get user rank
+            user_rank = self.db.get_user_rank(update.effective_user.id)
+            if user_rank == 0:
+                user_rank = 'N/A'
             
-            response = f"""📝 𝗤𝘂𝗶𝘇 𝗔𝗱𝗱𝗶𝘁𝗶𝗼𝗻 𝗥𝗲𝗽𝗼𝗿𝘁
-════════════════
-✅ Successfully added: {stats['added']} questions
-{db_status} Database saved: {stats['db_saved']}/{stats['added']}
+            # Get user stats data
+            total_quizzes = user_stats.get('total_quizzes', 0) if user_stats else 0
+            correct_answers = user_stats.get('correct_answers', 0) if user_stats else 0
+            wrong_answers = user_stats.get('wrong_answers', 0) if user_stats else 0
+            
+            # Get total quiz count from quiz manager
+            quiz_stats = self.quiz_manager.get_quiz_stats()
+            total_quiz_count = quiz_stats['total_quizzes']
+            
+            # Build combined response with both user stats and quiz library stats
+            response = f"""╔════════════════════════════════════╗
+║ 📊  𝗕𝗢𝗧 & 𝗨𝗦𝗘𝗥 𝗦𝗧𝗔𝗧𝗦 𝗗𝗔𝗦𝗛𝗕𝗢𝗔𝗥𝗗 ║
+╚════════════════════════════════════╝
 
-👉 𝗧𝗼𝘁𝗮𝗹 𝗤𝘂𝗶𝘇𝘇𝗲𝘀:
-• JSON: {total_questions}
-• Database: {db_count}
+👤 User: {update.effective_user.first_name}
+🏆 Rank: #{user_rank}
+🎮 Total Quizzes Attempted: {total_quizzes}
 
-❌ 𝗥𝗲𝗷𝗲𝗰𝘁𝗲𝗱:
-• Duplicates: {stats['rejected']['duplicates']}
-• Invalid Format: {stats['rejected']['invalid_format']}
-• Invalid Options: {stats['rejected']['invalid_options']}{duplicate_warning}
-════════════════"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 𝗣𝗘𝗥𝗙𝗢𝗥𝗠𝗔𝗡𝗖𝗘 𝗦𝗧𝗔𝗧𝗦
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Correct Answers: {correct_answers}
+❌ Wrong Answers: {wrong_answers}
 
-            await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
+╔═══════════════════════════════════╗
+║ 📚  𝗤𝗨𝗜𝗭 𝗟𝗜𝗕𝗥𝗔𝗥𝗬 𝗦𝗧𝗔𝗧𝗦  ║
+╚═══════════════════════════════════╝
+
+✨ Total Quizzes Available: {total_quiz_count}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+➕ Use /addquiz to contribute new quizzes  
+💡 Use /help to explore all commands"""
+
+            await update.message.reply_text(response)
             response_time = int((time.time() - start_time) * 1000)
             logger.info(f"/addquiz: Added {stats['added']} quizzes in {response_time}ms")
 
@@ -2416,7 +2426,7 @@ Failed to display quizzes. Please try again later.
             logger.error(f"Error cleaning up old polls: {e}")
 
     async def totalquiz(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Enhanced /totalquiz command with integrity verification and category breakdown"""
+        """Premium formatted /totalquiz command showing quiz library stats"""
         if not update.message:
             return
         if not update.effective_user:
@@ -2428,53 +2438,21 @@ Failed to display quizzes. Please try again later.
         try:
             # Get comprehensive quiz statistics
             quiz_stats = self.quiz_manager.get_quiz_stats()
+            total_quizzes = quiz_stats['total_quizzes']
             
-            # Determine integrity status icon
-            if quiz_stats['integrity_status'] == 'synced':
-                integrity_icon = "✅"
-                integrity_text = "All systems synced"
-            elif quiz_stats['integrity_status'] == 'mismatch':
-                integrity_icon = "⚠️"
-                integrity_text = f"Mismatch detected (Δ{quiz_stats['difference']})"
-            else:
-                integrity_icon = "❌"
-                integrity_text = "Error checking integrity"
-            
-            # Build category breakdown text
-            categories = quiz_stats.get('categories', {})
-            category_text = ""
-            if categories:
-                # Sort by count descending
-                sorted_categories = sorted(categories.items(), key=lambda x: x[1], reverse=True)
-                for cat_name, count in sorted_categories[:5]:  # Show top 5 categories
-                    category_text += f"  • {cat_name}: {count} quizzes\n"
-                
-                if len(categories) > 5:
-                    remaining = len(categories) - 5
-                    category_text += f"  • ... and {remaining} more categories\n"
-            else:
-                category_text = "  • No categories available\n"
-            
-            # Build comprehensive response
-            response = f"""📊 𝗤𝘂𝗶𝘇 𝗦𝘁𝗮𝘁𝗶𝘀𝘁𝗶𝗰𝘀
-══════════════════
+            # Premium formatted quiz library stats with Unicode box drawing
+            response = f"""╔═══════════════════════════════════╗
+║ 📚  𝗤𝗨𝗜𝗭 𝗟𝗜𝗕𝗥𝗔𝗥𝗬 𝗦𝗧𝗔𝗧𝗦  ║
+╚═══════════════════════════════════╝
 
-📚 **Total Quizzes Available:** {quiz_stats['total_quizzes']:,}
+✨ Total Quizzes Available: {total_quizzes}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+➕ Use /addquiz to contribute new quizzes  
+💡 Use /help to explore all commands"""
 
-{integrity_icon} **Integrity Status:** {integrity_text}
-  └ JSON File: {quiz_stats['total_quizzes']:,} quizzes
-  └ Database: {quiz_stats['db_count']:,} quizzes
-
-📁 **Categories ({quiz_stats['category_count']}):**
-{category_text}
-══════════════════
-
-💡 Use /addquiz to add more quizzes!
-💡 Use /help to see all commands."""
-
-            await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
+            await update.message.reply_text(response)
             response_time = int((time.time() - start_time) * 1000)
-            logger.info(f"/totalquiz: {quiz_stats['total_quizzes']} quizzes, {quiz_stats['integrity_status']} ({response_time}ms)")
+            logger.info(f"/totalquiz: {total_quizzes} quizzes ({response_time}ms)")
 
         except Exception as e:
             response_time = int((time.time() - start_time) * 1000)
