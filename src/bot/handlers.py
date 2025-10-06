@@ -1805,7 +1805,18 @@ Ready to begin? Try /quiz now! 🚀"""
             loading_msg = await update.message.reply_text("🏆 Loading leaderboard...")
             
             # Get top 10 from cached leaderboard
-            leaderboard, total_count = self._get_leaderboard_cached(limit=10, offset=0)
+            result = self._get_leaderboard_cached(limit=10, offset=0)
+            if not result:
+                await loading_msg.edit_text(
+                    "🏆 **Leaderboard**\n\n"
+                    "No quiz champions yet! 🎯\n\n"
+                    "Be the first to take a quiz and claim the top spot!\n\n"
+                    "💡 Use /quiz to get started",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                return
+            
+            leaderboard, total_count = result
             
             if not leaderboard:
                 await loading_msg.edit_text(
@@ -3014,7 +3025,8 @@ Start playing quizzes to track your progress.
                     return
                 await self.send_quiz(update.effective_chat.id, context, chat_type=update.effective_chat.type)
                 await query.edit_message_text("🎯 New quiz sent! Good luck! 🚀")
-                logger.info(f"Sent new quiz from callback for user {update.effective_user.id}")
+                user_id = update.effective_user.id if update.effective_user else None
+                logger.info(f"Sent new quiz from callback for user {user_id}")
                 
             elif query.data == "quiz_my_stats":
                 # Show user stats
@@ -3083,7 +3095,18 @@ Ready to begin? 🚀"""
                 
             elif query.data == "quiz_leaderboard":
                 # Show leaderboard
-                leaderboard, total_count = self._get_leaderboard_cached(limit=10, offset=0)
+                result = self._get_leaderboard_cached(limit=10, offset=0)
+                if not result:
+                    await query.edit_message_text(
+                        "🏆 **Leaderboard**\n\n"
+                        "No quiz champions yet! 🎯\n\n"
+                        "Be the first to take a quiz and claim the top spot!\n\n"
+                        "💡 Use /quiz to get started",
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    return
+                
+                leaderboard, total_count = result
                 
                 if not leaderboard:
                     await query.edit_message_text(
@@ -3141,7 +3164,8 @@ Ready to begin? 🚀"""
                     reply_markup=reply_markup,
                     parse_mode=ParseMode.MARKDOWN
                 )
-                logger.info(f"Showed leaderboard from callback for user {update.effective_user.id}")
+                user_id = update.effective_user.id if update.effective_user else None
+                logger.info(f"Showed leaderboard from callback for user {user_id}")
                 
             elif query.data == "quiz_categories":
                 # Show categories
@@ -3180,7 +3204,8 @@ Choose a category to explore:
                     reply_markup=reply_markup,
                     parse_mode=ParseMode.MARKDOWN
                 )
-                logger.info(f"Showed categories from callback for user {update.effective_user.id}")
+                user_id = update.effective_user.id if update.effective_user else None
+                logger.info(f"Showed categories from callback for user {user_id}")
                 
         except Exception as e:
             logger.error(f"Error in handle_quiz_action_callback: {e}", exc_info=True)
@@ -3367,8 +3392,12 @@ Choose a category to explore:
             
             # Network stats - can be complex, simplified here
             net_io = psutil.net_io_counters()
-            bytes_sent_mb = net_io.bytes_sent / (1024 ** 2)  # MB
-            bytes_recv_mb = net_io.bytes_recv / (1024 ** 2)  # MB
+            if net_io and hasattr(net_io, 'bytes_sent') and hasattr(net_io, 'bytes_recv'):
+                bytes_sent_mb = net_io.bytes_sent / (1024 ** 2)  # type: ignore[union-attr]
+                bytes_recv_mb = net_io.bytes_recv / (1024 ** 2)  # type: ignore[union-attr]
+            else:
+                bytes_sent_mb = 0.0
+                bytes_recv_mb = 0.0
             
             # Bot uptime
             uptime_seconds = (datetime.now() - datetime.fromtimestamp(process.create_time())).total_seconds()
