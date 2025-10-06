@@ -22,6 +22,7 @@ from telegram.constants import ParseMode
 from src.core import config
 from src.core.database import DatabaseManager
 from src.bot.dev_commands import DeveloperCommands
+from src.utils.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +55,9 @@ class TelegramQuizBot:
         
         self.db = db_manager if db_manager else DatabaseManager()
         self.dev_commands = DeveloperCommands(self.db, quiz_manager)
+        self.rate_limiter = RateLimiter()
         
-        logger.info("TelegramQuizBot initialized with performance optimizations: user cache, leaderboard cache")
+        logger.info("TelegramQuizBot initialized with performance optimizations: user cache, leaderboard cache, rate limiting")
 
     def _add_or_update_user_cached(self, user_id: int, username: str | None = None, first_name: str | None = None, last_name: str | None = None):
         """OPTIMIZATION 1: Cached user info update - reduces redundant DB writes"""
@@ -433,6 +435,15 @@ class TelegramQuizBot:
         except Exception as e:
             logger.error(f"Error cleaning up old activities: {e}")
     
+    async def cleanup_rate_limits(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Clean up old rate limit entries"""
+        try:
+            cleaned_count = self.rate_limiter.cleanup_old_entries()
+            if cleaned_count > 0:
+                logger.info(f"Rate limit cleanup: removed {cleaned_count} old entries")
+        except Exception as e:
+            logger.error(f"Error cleaning up rate limits: {e}")
+    
     def track_api_call(self, api_name: str):
         """Track Telegram API call for performance monitoring"""
         try:
@@ -502,10 +513,10 @@ class TelegramQuizBot:
 
             # Developer commands (legacy - keeping existing)
             self.application.add_handler(CommandHandler("addquiz", self.addquiz))
-            self.application.add_handler(CommandHandler("editquiz", self.editquiz))
             self.application.add_handler(CommandHandler("totalquiz", self.totalquiz))
             
             # Enhanced developer commands (from dev_commands module)
+            self.application.add_handler(CommandHandler("editquiz", self.dev_commands.editquiz))
             self.application.add_handler(CommandHandler("delquiz", self.dev_commands.delquiz))
             self.application.add_handler(CommandHandler("delquiz_confirm", self.dev_commands.delquiz_confirm))
             self.application.add_handler(CommandHandler("dev", self.dev_commands.dev))
@@ -522,6 +533,12 @@ class TelegramQuizBot:
             
             # Track ALL PM interactions (any message in private chat)
             from telegram.ext import MessageHandler, filters
+            
+            # Handle text input for quiz editing (must come before PM tracking)
+            self.application.add_handler(
+                MessageHandler(filters.TEXT & ~filters.COMMAND, self.dev_commands.handle_text_input)
+            )
+            
             self.application.add_handler(
                 MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, self.track_pm_interaction)
             )
@@ -542,6 +559,12 @@ class TelegramQuizBot:
             self.application.add_handler(CallbackQueryHandler(
                 self.handle_quiz_action_callback,
                 pattern="^(quiz_play_again|quiz_my_stats|quiz_leaderboard|quiz_categories)$"
+            ))
+            
+            # Add edit quiz callback handler
+            self.application.add_handler(CallbackQueryHandler(
+                self.dev_commands.handle_edit_quiz_callback,
+                pattern="^edit_quiz_"
             ))
             
             if not self.application or not self.application.job_queue:
@@ -589,6 +612,13 @@ class TelegramQuizBot:
                 self.cleanup_performance_metrics,
                 interval=86400,  # Every 24 hours
                 first=3600  # Start after 1 hour
+            )
+            
+            # Add rate limit cleanup job
+            self.application.job_queue.run_repeating(
+                self.cleanup_rate_limits,
+                interval=900,  # Every 15 minutes
+                first=900  # Start after 15 minutes
             )
             
             # Add activity logs cleanup job (run at 3 AM daily)
@@ -654,10 +684,10 @@ class TelegramQuizBot:
 
             # Developer commands (legacy - keeping existing)
             self.application.add_handler(CommandHandler("addquiz", self.addquiz))
-            self.application.add_handler(CommandHandler("editquiz", self.editquiz))
             self.application.add_handler(CommandHandler("totalquiz", self.totalquiz))
             
             # Enhanced developer commands (from dev_commands module)
+            self.application.add_handler(CommandHandler("editquiz", self.dev_commands.editquiz))
             self.application.add_handler(CommandHandler("delquiz", self.dev_commands.delquiz))
             self.application.add_handler(CommandHandler("delquiz_confirm", self.dev_commands.delquiz_confirm))
             self.application.add_handler(CommandHandler("dev", self.dev_commands.dev))
@@ -674,6 +704,12 @@ class TelegramQuizBot:
             
             # Track ALL PM interactions (any message in private chat)
             from telegram.ext import MessageHandler, filters
+            
+            # Handle text input for quiz editing (must come before PM tracking)
+            self.application.add_handler(
+                MessageHandler(filters.TEXT & ~filters.COMMAND, self.dev_commands.handle_text_input)
+            )
+            
             self.application.add_handler(
                 MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, self.track_pm_interaction)
             )
@@ -741,6 +777,13 @@ class TelegramQuizBot:
                 self.cleanup_performance_metrics,
                 interval=86400,  # Every 24 hours
                 first=3600  # Start after 1 hour
+            )
+            
+            # Add rate limit cleanup job
+            self.application.job_queue.run_repeating(
+                self.cleanup_rate_limits,
+                interval=900,  # Every 15 minutes
+                first=900  # Start after 15 minutes
             )
             
             # Add activity logs cleanup job (run at 3 AM daily)
@@ -1185,6 +1228,10 @@ Need more help? We're here for you! 🌟"""
             
             logger.info(f"📥 /quiz command received from user {user.id} in chat {chat.id}")
             
+            # Check rate limit
+            if not await self.check_rate_limit(update, context, 'quiz'):
+                return
+            
             # Log command immediately
             self._queue_activity_log(
                 activity_type='command',
@@ -1248,6 +1295,10 @@ Need more help? We're here for you! 🌟"""
             user = update.effective_user
             
             logger.info(f"📥 /start command received from user {user.id} in chat {chat.id} (type: {chat.type})")
+            
+            # Check rate limit
+            if not await self.check_rate_limit(update, context, 'start'):
+                return
             
             # OPTIMIZATION 1: Use cached user info update
             self._add_or_update_user_cached(
@@ -1391,6 +1442,10 @@ Need more help? We're here for you! 🌟"""
             chat = update.effective_chat
             
             logger.info(f"📥 /help command received from user {user.id} in chat {chat.id}")
+            
+            # Check rate limit
+            if not await self.check_rate_limit(update, context, 'help'):
+                return
             
             # Universal PM tracking - track all PM interactions
             self._track_pm_access(user.id, chat.type)
@@ -1556,6 +1611,10 @@ Your complete command guide is here:
             # Track PM access
             self._track_pm_access(user.id, chat.type)
             
+            # Check rate limit
+            if not await self.check_rate_limit(update, context, 'category'):
+                return
+            
             # Log command immediately
             self._queue_activity_log(
                 activity_type='command',
@@ -1646,12 +1705,8 @@ Your complete command guide is here:
             # Track PM access
             self._track_pm_access(user.id, chat.type)
 
-            # Check cooldown (only in groups)
-            is_allowed, remaining = self.check_user_command_cooldown(
-                user.id, "mystats", chat.type
-            )
-            if not is_allowed:
-                await update.message.reply_text(f"⏰ Please wait {remaining} seconds before using this command again")
+            # Check rate limit
+            if not await self.check_rate_limit(update, context, 'mystats'):
                 return
 
             # OPTIMIZATION 1: Use cached user info update
@@ -1777,15 +1832,8 @@ Ready to begin? Try /quiz now! 🚀"""
             # Track PM access
             self._track_pm_access(user.id, chat.type)
             
-            # Check cooldown (only in groups)
-            is_allowed, remaining = self.check_user_command_cooldown(
-                user.id, "leaderboard", chat.type
-            )
-            if not is_allowed:
-                await update.message.reply_text(
-                    f"⏰ Please wait {remaining} seconds before using this command again.\n\n"
-                    f"💡 Tip: Use /help to see all commands"
-                )
+            # Check rate limit
+            if not await self.check_rate_limit(update, context, 'leaderboard'):
                 return
             
             # Log command
@@ -1920,6 +1968,10 @@ Ready to begin? Try /quiz now! 🚀"""
         try:
             if not await self.is_developer(update.message.from_user.id):
                 await self._handle_dev_command_unauthorized(update)
+                return
+
+            # Check rate limit (developers will bypass this automatically)
+            if not await self.check_rate_limit(update, context, 'addquiz'):
                 return
 
             # Log command immediately
@@ -2223,6 +2275,36 @@ Failed to display quizzes. Please try again later.
         except Exception as e:
             logger.error(f"Error checking developer status: {e}")
             return False
+    
+    async def check_rate_limit(self, update: Update, context: ContextTypes.DEFAULT_TYPE, command_name: str) -> bool:
+        """Check rate limit and return True if allowed"""
+        user_id = update.effective_user.id if update.effective_user else None
+        if not user_id:
+            return True
+        
+        is_developer = await self.is_developer(user_id)
+        
+        allowed, wait_seconds, limit_type = self.rate_limiter.check_limit(user_id, command_name, is_developer)
+        
+        if not allowed:
+            self._queue_activity_log(
+                activity_type='rate_limit',
+                user_id=user_id,
+                command=command_name,
+                details={'wait_seconds': wait_seconds, 'limit_type': limit_type},
+                success=False
+            )
+            
+            if update.message:
+                await update.message.reply_text(
+                    f"⏱️ Slow down! You're using /{command_name} too quickly.\n\n"
+                    f"⏰ Please wait {wait_seconds} seconds before trying again.\n\n"
+                    f"💡 Tip: This prevents spam and keeps the bot fast for everyone!"
+                )
+            return False
+        
+        self.rate_limiter.record_command(user_id, command_name)
+        return True
             
     async def get_developers(self) -> list:
         """Get list of all developers"""
@@ -2500,6 +2582,10 @@ Please reply to a quiz message or use:
         start_time = time.time()
         
         try:
+            # Check rate limit
+            if not await self.check_rate_limit(update, context, 'stats'):
+                return
+            
             loading_msg = await update.message.reply_text("📊 Loading dashboard...")
             
             # OPTIMIZATION 4: Use cached stats if available and recent (cache duration increased to 30s)

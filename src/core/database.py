@@ -551,10 +551,41 @@ class DatabaseManager:
                     'id': row['id'],
                     'question': row['question'],
                     'options': json.loads(row['options']),
-                    'correct_answer': row['correct_answer']
+                    'correct_answer': row['correct_answer'],
+                    'category': row['category'] if 'category' in row.keys() else None
                 }
                 for row in rows
             ]
+    
+    def get_question_by_id(self, question_id: int) -> Optional[Dict]:
+        """Get a single quiz question by its ID.
+        
+        Args:
+            question_id (int): ID of the question to retrieve
+        
+        Returns:
+            Optional[Dict]: Question dictionary with keys:
+                           'id', 'question', 'options', 'correct_answer', 'category'
+                           Returns None if question not found
+        
+        Raises:
+            DatabaseError: If query fails
+        """
+        with self.get_connection() as conn:
+            assert conn is not None
+            cursor = self._get_cursor(conn)
+            assert cursor is not None
+            self._execute(cursor, 'SELECT * FROM questions WHERE id = ?', (question_id,))
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'id': row['id'],
+                    'question': row['question'],
+                    'options': json.loads(row['options']) if isinstance(row['options'], str) else row['options'],
+                    'correct_answer': row['correct_answer'],
+                    'category': row['category'] if 'category' in row.keys() else None
+                }
+            return None
     
     def get_questions_by_category(self, category: str) -> List[Dict]:
         """Get quiz questions filtered by category.
@@ -612,7 +643,7 @@ class DatabaseManager:
             self._execute(cursor, 'DELETE FROM questions WHERE id = ?', (question_id,))
             return cursor.rowcount > 0
     
-    def update_question(self, question_id: int, question: str, options: List[str], correct_answer: int) -> bool:
+    def update_question(self, question_id: int, question: str, options: List[str], correct_answer: int, category: Optional[str] = None) -> bool:
         """Update an existing quiz question.
         
         Args:
@@ -620,6 +651,7 @@ class DatabaseManager:
             question (str): New question text
             options (List[str]): New list of 4 answer options
             correct_answer (int): New index of correct answer (0-3)
+            category (Optional[str]): Category for the question (optional)
         
         Returns:
             bool: True if question was updated, False if not found
@@ -632,11 +664,18 @@ class DatabaseManager:
             cursor = self._get_cursor(conn)
             assert cursor is not None
             options_json = json.dumps(options)
-            self._execute(cursor, '''
-                UPDATE questions 
-                SET question = ?, options = ?, correct_answer = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            ''', (question, options_json, correct_answer, question_id))
+            if category is not None:
+                self._execute(cursor, '''
+                    UPDATE questions 
+                    SET question = ?, options = ?, correct_answer = ?, category = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (question, options_json, correct_answer, category, question_id))
+            else:
+                self._execute(cursor, '''
+                    UPDATE questions 
+                    SET question = ?, options = ?, correct_answer = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (question, options_json, correct_answer, question_id))
             return cursor.rowcount > 0
     
     def add_or_update_user(self, user_id: int, username: str | None = None, first_name: str | None = None, last_name: str | None = None):
