@@ -925,6 +925,76 @@ class QuizManager:
             logger.error(f"Error deleting question {db_id}: {e}")
             raise DatabaseError(f"Failed to delete question {db_id}: {e}") from e
 
+    def edit_question_by_db_id(self, db_id: int, data: Dict) -> bool:
+        """Edit question by database ID in PostgreSQL only.
+        
+        Updates question in database and refreshes in-memory cache.
+        
+        Args:
+            db_id: Database ID of question to edit
+            data: Question data with 'question', 'options', 'correct_answer' keys
+            
+        Returns:
+            bool: True if edited successfully, False if not found
+        
+        Raises:
+            ValidationError: If question data is invalid
+            DatabaseError: If database update fails
+        """
+        try:
+            # Validate question text
+            question = data.get('question', '').strip()
+            if not question or len(question) < 10:
+                raise ValidationError("Question must be at least 10 characters long")
+            
+            # Validate options
+            options = data.get('options', [])
+            if not isinstance(options, list) or len(options) != 4:
+                raise ValidationError("Must provide exactly 4 options")
+            if not all(isinstance(opt, str) and opt.strip() for opt in options):
+                raise ValidationError("All options must be non-empty strings")
+            
+            # Validate correct answer
+            correct_answer = data.get('correct_answer')
+            if not isinstance(correct_answer, int) or not (0 <= correct_answer < 4):
+                raise ValidationError("Correct answer must be 0, 1, 2, or 3")
+            
+            # Update in database
+            if not self.db.update_question(db_id, question, options, correct_answer):
+                logger.warning(f"Question ID {db_id} not found in database")
+                return False
+            
+            # Update in-memory cache
+            for i, q in enumerate(self.questions):
+                if q.get('id') == db_id:
+                    self.questions[i] = {
+                        'id': db_id,
+                        'question': question,
+                        'options': options,
+                        'correct_answer': correct_answer
+                    }
+                    logger.info(f"Edited question {db_id} in database and cache: {question[:50]}...")
+                    return True
+            
+            # If not in cache, reload from database
+            logger.warning(f"Question {db_id} updated in DB but not found in cache, reloading...")
+            db_questions = self.db.get_all_questions()
+            self.questions = []
+            for db_q in db_questions:
+                self.questions.append({
+                    'id': db_q['id'],
+                    'question': db_q['question'],
+                    'options': db_q['options'],
+                    'correct_answer': db_q['correct_answer']
+                })
+            return True
+                
+        except ValidationError:
+            raise
+        except Exception as e:
+            logger.error(f"Error editing question {db_id}: {e}")
+            raise DatabaseError(f"Failed to edit question {db_id}: {e}") from e
+
     def get_quiz_stats(self) -> Dict:
         """Get comprehensive quiz statistics from PostgreSQL database.
         

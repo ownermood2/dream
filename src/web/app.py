@@ -264,8 +264,10 @@ def edit_question(question_id):
         if not data:
             return jsonify({"status": "error", "message": "No data provided"}), 400
         
-        quiz_manager.edit_question(question_id, data)
-        return jsonify({"status": "success", "message": "Question updated successfully"})
+        if quiz_manager.edit_question_by_db_id(question_id, data):
+            return jsonify({"status": "success", "message": "Question updated successfully"})
+        else:
+            return jsonify({"status": "error", "message": "Question not found"}), 404
     except ValueError as e:
         return jsonify({"status": "error", "message": str(e)}), 400
     except KeyError as e:
@@ -280,8 +282,10 @@ def delete_question(question_id):
         if not quiz_manager:
             return jsonify({"status": "error", "message": "Quiz manager not initialized"}), 500
         
-        quiz_manager.delete_question(question_id)
-        return jsonify({"status": "success", "message": "Question deleted successfully"})
+        if quiz_manager.delete_question_by_db_id(question_id):
+            return jsonify({"status": "success", "message": "Question deleted successfully"})
+        else:
+            return jsonify({"status": "error", "message": "Question not found"}), 404
     except ValueError as e:
         return jsonify({"status": "error", "message": str(e)}), 400
     except Exception as e:
