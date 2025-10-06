@@ -35,7 +35,7 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
 
 **Automatic PostgreSQL Migration**: On PostgreSQL startup, the system automatically detects and converts any INTEGER Telegram ID columns to BIGINT across all 9 tables (users.user_id, developers.user_id, user_daily_activity.user_id, quiz_history.user_id/chat_id, activity_logs.user_id/chat_id, broadcast_logs.admin_id, groups.chat_id). This prevents "integer out of range" errors for large Telegram IDs.
 
-**Dual Storage Architecture**: Questions are stored in both PostgreSQL database (for reliability and ID management) and JSON files (for fast loading). The system maintains automatic synchronization between both storage layers with integrity verification.
+**PostgreSQL-Only Storage**: Questions and all quiz data are stored exclusively in PostgreSQL database for production-grade reliability. The system uses intelligent in-memory caching for optimal performance, eliminating file I/O dependencies and ensuring data consistency.
 
 ## Frontend Architecture
 -   **Health Check Endpoint**: `/` returns `{"status":"ok"}`.
@@ -80,13 +80,12 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
     - Instant /help and /start commands (no cooldowns)
     - Chat type parameter passing to avoid redundant get_chat API calls
     - PM quiz message cleanup to prevent database bloat
--   **Data Integrity & Atomic Operations**:
-    - **Atomic File Writes**: Temp file + rename pattern prevents corruption during saves
-    - **File Locking**: Exclusive locks prevent race conditions from concurrent operations
-    - **Integrity Verification**: Automatic checks ensure database and JSON counts match
-    - **Auto-Sync**: Detects and fixes mismatches between storage layers automatically
-    - **Reliable Deletion**: Database ID-based deletion eliminates fragile text matching
-    - **Enhanced /totalquiz**: Shows comprehensive stats with integrity status and category breakdown
+-   **Data Integrity & Reliability**:
+    - **PostgreSQL-Only Storage**: Single source of truth eliminates sync issues and data inconsistencies
+    - **In-Memory Caching**: Intelligent caching layer for fast quiz delivery without file I/O
+    - **Database ID-Based Operations**: All quiz operations use database IDs for reliable CRUD operations
+    - **Transaction Safety**: Database transactions ensure atomic operations and data consistency
+    - **Enhanced /totalquiz**: Shows comprehensive stats with category breakdown and quiz counts
 -   **Network Resilience**: Configured HTTPXRequest with balanced timeouts.
 -   **Single Instance Enforcement**: PID lockfile prevents multiple bot instances.
 -   **Platform-Agnostic**: Compatible with Render, VPS, Replit, Railway, Heroku.
