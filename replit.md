@@ -59,6 +59,7 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
     - **Leaderboard Command**: `/leaderboard` displays top 10 quiz champions with medals, scores, and accuracy. Auto-cleanup in groups (3-second delay). 60-second caching for performance.
     - **Post-Quiz Action Buttons**: After answering quizzes in private chats, users see 4 action buttons: Play Again, My Stats, Leaderboard, and Categories for seamless navigation.
     - **Enhanced Help with Unicode UI**: Beautiful `/help` command with Unicode box-drawing characters (╔═╗║╚╝), bold Unicode text (𝐌𝐈𝐒𝐒 𝐐𝐔𝐈𝐙 𓂀 𝐁𝐎𝐓), personalized user display, and organized sections (User/Developer Commands, Features).
+    - **Premium Stats Dashboard**: Unified clean stats format across all commands (/mystats, /addquiz, callbacks) with compact box-drawing characters, bold Unicode labels (𝐁𝐎𝐓 & 𝐔𝐒𝐄𝐑 𝐒𝐓𝐀𝐓𝐒 𝐃𝐀𝐒𝐇𝐁𝐎𝐀𝐑𝐃, 𝐏𝐄𝐑𝐅𝐎𝐑𝐌𝐀𝐍𝐂𝐄 𝐒𝐓𝐀𝐓𝐒), and consistent spacing for professional presentation.
     - **Status Monitoring**: `/status` command (developer-only) shows bot health, uptime, database stats, performance metrics, and scheduler status.
     - **Friendly Error Messages**: All errors include actionable guidance and helpful suggestions (e.g., "Try /help for available commands").
 
@@ -83,7 +84,7 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
 -   **Data Integrity & Reliability**:
     - **PostgreSQL-Only Storage**: Single source of truth eliminates sync issues and data inconsistencies
     - **In-Memory Caching**: Intelligent caching layer for fast quiz delivery without file I/O
-    - **Database ID-Based Operations**: All quiz operations use database IDs for reliable CRUD operations
+    - **Database ID-Based Operations**: All quiz operations use database IDs for reliable CRUD operations. PostgreSQL uses `RETURNING id` clause for insertions (not `cursor.lastrowid` which is SQLite-only)
     - **Transaction Safety**: Database transactions ensure atomic operations and data consistency
     - **Enhanced /totalquiz**: Shows comprehensive stats with category breakdown and quiz counts
 -   **Network Resilience**: Configured HTTPXRequest with balanced timeouts.

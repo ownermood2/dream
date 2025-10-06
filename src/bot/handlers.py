@@ -1721,19 +1721,19 @@ Ready to begin? Try /quiz now! 🚀"""
                 wrong_answers = stats.get('wrong_answers', 0)
 
                 # Premium formatted stats message with Unicode box drawing
-                stats_message = f"""╔════════════════════════════════════╗
-║ 📊  𝗕𝗢𝗧 & 𝗨𝗦𝗘𝗥 𝗦𝗧𝗔𝗧𝗦 𝗗𝗔𝗦𝗛𝗕𝗢𝗔𝗥𝗗 ║
-╚════════════════════════════════════╝
+                stats_message = f"""╔═════════════════════════╗
+║ 📊  𝐁𝐎𝐓 & 𝐔𝐒𝐄𝐑 𝐒𝐓𝐀𝐓𝐒 𝐃𝐀𝐒𝐇𝐁𝐎𝐀𝐑𝐃 
+╚═════════════════════════╝
 
-👤 User: {user.first_name}
-🏆 Rank: #{user_rank}
-🎮 Total Quizzes Attempted: {total_quizzes}
+👤 𝐔𝐬𝐞𝐫: {user.first_name}
+🏆 𝐑𝐚𝐧𝐤: #{user_rank}
+🎮 𝐓𝐨𝐭𝐚𝐥 𝐐𝐮𝐢𝐳𝐳𝐞𝐬 𝐀𝐭𝐭𝐞𝐦𝐩𝐭𝐞𝐝: {total_quizzes}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 𝗣𝗘𝗥𝗙𝗢𝗥𝗠𝗔𝗡𝗖𝗘 𝗦𝗧𝗔𝗧𝗦
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ Correct Answers: {correct_answers}
-❌ Wrong Answers: {wrong_answers}"""
+━━━━━━━━━━━━━━━━━━
+🎯 𝐏𝐄𝐑𝐅𝐎𝐑𝐌𝐀𝐍𝐂𝐄 𝐒𝐓𝐀𝐓𝐒
+━━━━━━━━━━━━━━━━━━
+✅ 𝐂𝐨𝐫𝐫𝐞𝐜𝐭 𝐀𝐧𝐬𝐰𝐞𝐫𝐬: {correct_answers}
+❌ 𝐖𝐫𝐨𝐧𝐠 𝐀𝐧𝐬𝐰𝐞𝐫𝐬: {wrong_answers}"""
 
                 await loading_msg.edit_text(stats_message)
                 response_time = int((time.time() - start_time) * 1000)
@@ -2024,19 +2024,19 @@ Ready to begin? Try /quiz now! 🚀"""
             total_quiz_count = quiz_stats['total_quizzes']
             
             # Build combined response with both user stats and quiz library stats
-            response = f"""╔════════════════════════════════════╗
-║ 📊  𝗕𝗢𝗧 & 𝗨𝗦𝗘𝗥 𝗦𝗧𝗔𝗧𝗦 𝗗𝗔𝗦𝗛𝗕𝗢𝗔𝗥𝗗 ║
-╚════════════════════════════════════╝
+            response = f"""╔═════════════════════════╗
+║ 📊  𝐁𝐎𝐓 & 𝐔𝐒𝐄𝐑 𝐒𝐓𝐀𝐓𝐒 𝐃𝐀𝐒𝐇𝐁𝐎𝐀𝐑𝐃 
+╚═════════════════════════╝
 
-👤 User: {update.effective_user.first_name}
-🏆 Rank: #{user_rank}
-🎮 Total Quizzes Attempted: {total_quizzes}
+👤 𝐔𝐬𝐞𝐫: {update.effective_user.first_name}
+🏆 𝐑𝐚𝐧𝐤: #{user_rank}
+🎮 𝐓𝐨𝐭𝐚𝐥 𝐐𝐮𝐢𝐳𝐳𝐞𝐬 𝐀𝐭𝐭𝐞𝐦𝐩𝐭𝐞𝐝: {total_quizzes}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 𝗣𝗘𝗥𝗙𝗢𝗥𝗠𝗔𝗡𝗖𝗘 𝗦𝗧𝗔𝗧𝗦
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ Correct Answers: {correct_answers}
-❌ Wrong Answers: {wrong_answers}
+━━━━━━━━━━━━━━━━━━
+🎯 𝐏𝐄𝐑𝐅𝐎𝐑𝐌𝐀𝐍𝐂𝐄 𝐒𝐓𝐀𝐓𝐒
+━━━━━━━━━━━━━━━━━━
+✅ 𝐂𝐨𝐫𝐫𝐞𝐜𝐭 𝐀𝐧𝐬𝐰𝐞𝐫𝐬: {correct_answers}
+❌ 𝐖𝐫𝐨𝐧𝐠 𝐀𝐧𝐬𝐰𝐞𝐫𝐬: {wrong_answers}
 
 ╔═══════════════════════════════════╗
 ║ 📚  𝗤𝗨𝗜𝗭 𝗟𝗜𝗕𝗥𝗔𝗥𝗬 𝗦𝗧𝗔𝗧𝗦  ║
@@ -3044,17 +3044,21 @@ Start playing quizzes to track your progress.
                 stats = self.db.get_user_quiz_stats_realtime(update.effective_user.id)
                 
                 if not stats or not stats.get('total_quizzes', 0):
-                    no_stats_text = """📊 **Your Stats**
+                    no_stats_text = """╔═════════════════════════╗
+║ 📊  𝐁𝐎𝐓 & 𝐔𝐒𝐄𝐑 𝐒𝐓𝐀𝐓𝐒 𝐃𝐀𝐒𝐇𝐁𝐎𝐀𝐑𝐃 
+╚═════════════════════════╝
 
-🎯 You haven't taken any quizzes yet!
+👤 𝐔𝐬𝐞𝐫: {update.effective_user.first_name}
+🎯 No quizzes yet!
 
-Get started:
+━━━━━━━━━━━━━━━━━━
+💡 Get started:
 • Use /quiz to try your first quiz
 • Track your progress here
 • Compete with others
 
 Ready to begin? 🚀"""
-                    await query.edit_message_text(no_stats_text, parse_mode=ParseMode.MARKDOWN)
+                    await query.edit_message_text(no_stats_text)
                     return
                 
                 # Get user rank
@@ -3064,23 +3068,23 @@ Ready to begin? 🚀"""
                 
                 # Format stats
                 user = update.effective_user
-                username = f"[{user.first_name}](tg://user?id={user.id})"
                 quiz_attempts = stats.get('total_quizzes', 0)
                 correct_answers = stats.get('correct_answers', 0)
                 wrong_answers = stats.get('wrong_answers', 0)
-                accuracy = stats.get('accuracy', 0.0)
                 
-                stats_message = f"""📊 **Stats for {username}**
-━━━━━━━━━━━━━━━━━━━━━━
+                stats_message = f"""╔═════════════════════════╗
+║ 📊  𝐁𝐎𝐓 & 𝐔𝐒𝐄𝐑 𝐒𝐓𝐀𝐓𝐒 𝐃𝐀𝐒𝐇𝐁𝐎𝐀𝐑𝐃 
+╚═════════════════════════╝
 
-🏆 Rank: #{user_rank}
-🎯 Total Quizzes: {quiz_attempts}
-✅ Correct: {correct_answers}
-❌ Wrong: {wrong_answers}
-📈 Accuracy: {accuracy}%
+👤 𝐔𝐬𝐞𝐫: {user.first_name}
+🏆 𝐑𝐚𝐧𝐤: #{user_rank}
+🎮 𝐓𝐨𝐭𝐚𝐥 𝐐𝐮𝐢𝐳𝐳𝐞𝐬 𝐀𝐭𝐭𝐞𝐦𝐩𝐭𝐞𝐝: {quiz_attempts}
 
-━━━━━━━━━━━━━━━━━━━━━━
-💡 Keep playing to improve your rank!"""
+━━━━━━━━━━━━━━━━━━
+🎯 𝐏𝐄𝐑𝐅𝐎𝐑𝐌𝐀𝐍𝐂𝐄 𝐒𝐓𝐀𝐓𝐒
+━━━━━━━━━━━━━━━━━━
+✅ 𝐂𝐨𝐫𝐫𝐞𝐜𝐭 𝐀𝐧𝐬𝐰𝐞𝐫𝐬: {correct_answers}
+❌ 𝐖𝐫𝐨𝐧𝐠 𝐀𝐧𝐬𝐰𝐞𝐫𝐬: {wrong_answers}"""
                 
                 # Add keyboard
                 keyboard = [
@@ -3093,8 +3097,7 @@ Ready to begin? 🚀"""
                 
                 await query.edit_message_text(
                     stats_message,
-                    reply_markup=reply_markup,
-                    parse_mode=ParseMode.MARKDOWN
+                    reply_markup=reply_markup
                 )
                 logger.info(f"Showed stats from callback for user {update.effective_user.id}")
                 
