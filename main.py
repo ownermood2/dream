@@ -4,6 +4,7 @@ import logging
 import asyncio
 import threading
 from datetime import datetime
+from waitress import serve
 from src.core.config import Config
 
 logging.basicConfig(
@@ -63,11 +64,11 @@ async def run_polling_mode(config: Config):
         logger.warning(f"Could not delete webhook: {e}")
     
     flask_thread = threading.Thread(
-        target=lambda: app.run(host='0.0.0.0', port=config.port, use_reloader=False, debug=False),
+        target=lambda: serve(app, host='0.0.0.0', port=config.port, threads=4),
         daemon=True
     )
     flask_thread.start()
-    logger.info(f"Flask server started on port {config.port}")
+    logger.info(f"✅ Production Flask server (Waitress) started on port {config.port}")
     
     # Create single DatabaseManager instance for all components
     db_manager = DatabaseManager()
