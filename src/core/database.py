@@ -11,6 +11,8 @@ import sqlite3
 import json
 import logging
 import asyncio
+import os
+import shutil
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from contextlib import contextmanager
@@ -106,10 +108,64 @@ class DatabaseManager:
                 self._conn.autocommit = False
                 logger.debug("Created persistent PostgreSQL connection")
             else:
-                self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
-                self._conn.row_factory = sqlite3.Row
-                self._conn.execute('PRAGMA journal_mode=WAL')
-                logger.debug("Created persistent SQLite connection")
+                assert self.db_path is not None, "db_path must be set for SQLite"
+                primary_path = self.db_path
+                fallback_path = '/tmp/quiz_bot.db'
+                connection_successful = False
+                
+                try:
+                    db_dir = os.path.dirname(primary_path)
+                    if db_dir:
+                        os.makedirs(db_dir, exist_ok=True)
+                        logger.info(f"📁 Ensured directory exists: {db_dir}")
+                    
+                    self._conn = sqlite3.connect(primary_path, check_same_thread=False)
+                    self._conn.row_factory = sqlite3.Row
+                    self._conn.execute('PRAGMA journal_mode=WAL')
+                    connection_successful = True
+                    logger.info(f"✅ SQLite database connected successfully at: {primary_path}")
+                    
+                except (OSError, PermissionError, sqlite3.OperationalError) as primary_error:
+                    logger.warning(f"⚠️ Could not use primary database path '{primary_path}': {primary_error}")
+                    logger.info(f"🔄 Falling back to temporary database location: {fallback_path}")
+                    
+                    try:
+                        original_db_exists = os.path.exists(primary_path)
+                        original_has_data = False
+                        
+                        if original_db_exists:
+                            try:
+                                # Check file size to determine if it has data
+                                file_size = os.path.getsize(primary_path)
+                                original_has_data = file_size > 0
+                                logger.info(f"📊 Original database file size: {file_size} bytes")
+                            except Exception as check_error:
+                                logger.debug(f"Could not check original database: {check_error}")
+                        
+                        if original_has_data:
+                            logger.info(f"💾 Copying existing database from {primary_path} to {fallback_path}")
+                            try:
+                                shutil.copy2(primary_path, fallback_path)
+                                logger.info(f"✅ Successfully copied database to preserve existing data")
+                            except Exception as copy_error:
+                                logger.warning(f"⚠️ Could not copy database: {copy_error}. Starting fresh at fallback location.")
+                        
+                        self._conn = sqlite3.connect(fallback_path, check_same_thread=False)
+                        self._conn.row_factory = sqlite3.Row
+                        self._conn.execute('PRAGMA journal_mode=WAL')
+                        self.db_path = fallback_path
+                        connection_successful = True
+                        logger.info(f"✅ Successfully connected to fallback database at: {fallback_path}")
+                        
+                    except Exception as fallback_error:
+                        logger.error(f"❌ Failed to connect to fallback database: {fallback_error}")
+                        raise DatabaseError(f"Failed to connect to both primary ({primary_path}) and fallback ({fallback_path}) databases") from fallback_error
+                
+                if not connection_successful:
+                    raise DatabaseError(f"Failed to establish database connection")
+                    
+        except DatabaseError:
+            raise
         except Exception as e:
             logger.error(f"Failed to create persistent connection: {e}")
             raise DatabaseError(f"Failed to create persistent connection: {e}") from e
