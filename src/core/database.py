@@ -523,12 +523,24 @@ class DatabaseManager:
             cursor = self._get_cursor(conn)
             assert cursor is not None
             options_json = json.dumps(options)
-            self._execute(cursor, '''
-                INSERT INTO questions (question, options, correct_answer)
-                VALUES (?, ?, ?)
-            ''', (question, options_json, correct_answer))
-            assert cursor.lastrowid is not None
-            return cursor.lastrowid
+            
+            if self.db_type == 'postgresql':
+                # PostgreSQL: Use RETURNING to get ID
+                self._execute(cursor, '''
+                    INSERT INTO questions (question, options, correct_answer)
+                    VALUES (?, ?, ?)
+                    RETURNING id
+                ''', (question, options_json, correct_answer))
+                result = cursor.fetchone()
+                return result['id'] if result else 0
+            else:
+                # SQLite: Use lastrowid
+                self._execute(cursor, '''
+                    INSERT INTO questions (question, options, correct_answer)
+                    VALUES (?, ?, ?)
+                ''', (question, options_json, correct_answer))
+                assert cursor.lastrowid is not None
+                return cursor.lastrowid
     
     def get_all_questions(self) -> List[Dict]:
         """Get all quiz questions from the database.
