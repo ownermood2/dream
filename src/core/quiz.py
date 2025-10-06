@@ -683,8 +683,6 @@ class QuizManager:
             else:
                 stats['current_streak'] = 0
 
-            # NOTE: Only save stats.json, scores.json - NOT questions.json
-            # questions.json should only be saved during quiz CRUD operations (add/edit/delete)
             logger.info(f"Successfully recorded attempt for user {user_id}: score={self.scores.get(user_id_str)}, streak={stats['current_streak']}")
 
         except ValidationError:
