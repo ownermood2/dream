@@ -2729,10 +2729,12 @@ Example:
         
         elif data.startswith("edit_quiz_set_category_"):
             parts = data.split("_")
-            quiz_id = int(parts[-2])
-            category = parts[-1]
+            quiz_id = int(parts[4])
+            category = "_".join(parts[5:])
             if category == "none":
                 category = None
+            else:
+                category = category.replace("_", " ")
             
             quiz_data = context.user_data.get(f'editing_quiz_{quiz_id}')
             if quiz_data:
@@ -2741,8 +2743,8 @@ Example:
         
         elif data.startswith("edit_quiz_set_answer_"):
             parts = data.split("_")
-            quiz_id = int(parts[-2])
-            answer_idx = int(parts[-1])
+            quiz_id = int(parts[4])
+            answer_idx = int(parts[5])
             
             quiz_data = context.user_data.get(f'editing_quiz_{quiz_id}')
             if quiz_data:
