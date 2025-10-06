@@ -1,19 +1,15 @@
 """Quiz Manager for Telegram Quiz Bot.
 
 This module provides the core quiz management functionality including question
-selection, user scoring, leaderboards, and statistics tracking. It manages
-both file-based and database-backed storage with intelligent caching to
-optimize performance while ensuring data consistency.
+selection, user scoring, leaderboards, and statistics tracking. Uses PostgreSQL
+database for persistent storage with intelligent in-memory caching for optimal
+performance.
 """
 
 import json
 import random
-import os
 import logging
 import traceback
-import fcntl
-import tempfile
-import shutil
 from typing import List, Dict, Optional, Any
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
@@ -27,33 +23,29 @@ class QuizManager:
     
     This class serves as the central coordinator for all quiz-related operations.
     It handles question management, user score tracking, leaderboard generation,
-    and comprehensive statistics. The manager uses both file-based storage for
-    quick access and database storage for persistence.
+    and comprehensive statistics. Uses PostgreSQL database for persistent storage
+    with intelligent in-memory caching for optimal performance.
     
     Key features:
     - Intelligent question selection avoiding recently asked questions
     - Real-time score tracking and leaderboard updates
     - Group and private chat statistics
     - Question caching for improved performance
-    - Automatic data synchronization and cleanup
+    - Pure PostgreSQL storage with no file I/O
     
     Attributes:
-        questions_file (str): Path to questions JSON file
-        scores_file (str): Path to scores JSON file
-        active_chats_file (str): Path to active chats JSON file
-        stats_file (str): Path to user stats JSON file
         db (DatabaseManager): Database manager instance
-        questions (List[Dict]): Loaded quiz questions
-        scores (Dict): User scores dictionary
-        active_chats (List): List of active chat IDs
-        stats (Dict): User statistics dictionary
+        questions (List[Dict]): Cached quiz questions from database
+        scores (Dict): User scores dictionary (in-memory)
+        active_chats (List): List of active chat IDs (in-memory)
+        stats (Dict): User statistics dictionary (in-memory)
     """
     
-    def __init__(self, db_manager: DatabaseManager = None):
-        """Initialize the quiz manager with proper data structures and caching.
+    def __init__(self, db_manager: Optional[DatabaseManager] = None):
+        """Initialize the quiz manager with database connection and caching structures.
         
-        Sets up file paths, initializes database connection, creates caching
-        structures for questions and leaderboards, and loads all quiz data.
+        Loads questions from PostgreSQL database and sets up in-memory caching
+        for optimal performance. No file I/O operations.
         
         Args:
             db_manager (DatabaseManager, optional): Shared database manager instance.
@@ -62,13 +54,7 @@ class QuizManager:
         Raises:
             DatabaseError: If database initialization or data loading fails
         """
-        # Initialize file paths
-        self.questions_file = "data/questions.json"
-        self.scores_file = "data/scores.json"
-        self.active_chats_file = "data/active_chats.json"
-        self.stats_file = "data/user_stats.json"
-
-        # Initialize data attributes first
+        # Initialize in-memory data structures
         self.questions = []
         self.scores = {}
         self.active_chats = []
@@ -85,245 +71,26 @@ class QuizManager:
         self._cache_duration = timedelta(minutes=5)
 
         # Initialize tracking structures
-        self.recent_questions = defaultdict(lambda: deque(maxlen=50))  # Store last 50 questions per chat
-        self.last_question_time = defaultdict(dict)  # Track when each question was last asked in each chat
-        self.available_questions = defaultdict(list)  # Track available questions per chat
+        self.recent_questions = defaultdict(lambda: deque(maxlen=50))
+        self.last_question_time = defaultdict(dict)
+        self.available_questions = defaultdict(list)
 
-        # Initialize basic data
-        self._initialize_files()
-        self._last_save = datetime.now()
-        self._save_interval = timedelta(minutes=5)
-
-        # Load data after all structures are initialized
-        self.load_data()
-
-    def _initialize_files(self):
-        """Initialize data files with proper error handling.
-        
-        Creates the data directory and default JSON files if they don't exist.
-        
-        Raises:
-            DatabaseError: If directory or file creation fails
-        """
+        # Load questions from database
         try:
-            os.makedirs("data", exist_ok=True)
-            default_files = {
-                self.questions_file: [],
-                self.scores_file: {},
-                self.active_chats_file: [],
-                self.stats_file: {}
-            }
-            for file_path, default_data in default_files.items():
-                if not os.path.exists(file_path):
-                    with open(file_path, 'w') as f:
-                        json.dump(default_data, f)
-        except OSError as e:
-            logger.error(f"Failed to create data directory or files: {e}")
-            raise DatabaseError(f"Failed to initialize data files in data directory: {e}") from e
-        except Exception as e:
-            logger.error(f"Unexpected error initializing files: {e}")
-            raise DatabaseError(f"Unexpected error during file initialization: {e}") from e
-
-    def load_data(self):
-        """Load all quiz data from files with proper error handling.
-        
-        Loads questions, scores, active chats, and user statistics from JSON
-        files. Validates and cleans question data, removing invalid entries
-        and normalizing formats.
-        
-        Raises:
-            DatabaseError: If data loading or validation fails
-        """
-        try:
-            # Load questions from file
-            try:
-                with open(self.questions_file, 'r') as f:
-                    raw_data = json.load(f)
-                    if isinstance(raw_data, dict) and 'questions' in raw_data:
-                        raw_questions = raw_data['questions']
-                    elif isinstance(raw_data, list):
-                        raw_questions = raw_data
-                    else:
-                        raw_questions = []
-                        logger.warning("Invalid questions format, using empty list")
-            except (json.JSONDecodeError, FileNotFoundError) as e:
-                logger.warning(f"Questions file error: {e}, initializing with defaults")
-                raw_questions = []
-
-            # Clean up existing questions
+            db_questions = self.db.get_all_questions()
             self.questions = []
-            for q in raw_questions:
-                try:
-                    if not isinstance(q, dict):
-                        continue
-
-                    question = q.get('question', '').strip()
-                    if not question:
-                        continue
-
-                    if question.startswith('/addquiz'):
-                        question = question[len('/addquiz'):].strip()
-
-                    correct_answer = q.get('correct_answer', 0)
-                    if isinstance(correct_answer, int) and correct_answer > 0:
-                        correct_answer = correct_answer - 1
-
-                    options = q.get('options', [])
-                    if len(options) == 4:
-                        self.questions.append({
-                            'question': question,
-                            'options': options,
-                            'correct_answer': correct_answer
-                        })
-                except Exception as e:
-                    logger.error(f"Error processing question: {e}")
-                    continue
-
-            # Enrich questions with database IDs for reliable delquiz functionality
-            try:
-                db_questions = self.db.get_all_questions()
-                question_id_map = {}
-                for db_q in db_questions:
-                    # Match by cleaned question text
-                    clean_db_text = db_q['question'].strip()
-                    if clean_db_text.startswith('/addquiz'):
-                        clean_db_text = clean_db_text[len('/addquiz'):].strip()
-                    question_id_map[clean_db_text] = db_q['id']
-                
-                # Add IDs to loaded questions
-                id_count = 0
-                for q in self.questions:
-                    if q['question'] in question_id_map:
-                        q['id'] = question_id_map[q['question']]
-                        id_count += 1
-                
-                logger.info(f"Enriched {id_count}/{len(self.questions)} questions with database IDs")
-            except Exception as e:
-                logger.warning(f"Could not enrich questions with database IDs: {e}")
-
-            # Load other data files
-            for file_path, default_value, attr_name in [
-                (self.scores_file, {}, 'scores'),
-                (self.active_chats_file, [], 'active_chats'),
-                (self.stats_file, {}, 'stats')
-            ]:
-                try:
-                    with open(file_path, 'r') as f:
-                        setattr(self, attr_name, json.load(f))
-                except (json.JSONDecodeError, FileNotFoundError) as e:
-                    logger.warning(f"Error loading {file_path}: {e}, using defaults")
-                    setattr(self, attr_name, default_value)
-
-            # Reset tracking structures
-            self.recent_questions.clear()
-            self.last_question_time.clear()
-            self.available_questions.clear()
-
-            # Clear caches
-            self._cached_questions = None
-            self._cached_leaderboard = None
-            self._leaderboard_cache_time = None
-
-            logger.info(f"Successfully loaded and cleaned {len(self.questions)} questions")
-            logger.info(f"Active chats: {len(self.active_chats)}")
-            logger.info(f"Active users with stats: {len(self.stats)}")
-            logger.info(f"Users with scores: {len(self.scores)}")
-
-        except (json.JSONDecodeError, FileNotFoundError) as e:
-            logger.error(f"Failed to load data files: {str(e)}\n{traceback.format_exc()}")
-            raise DatabaseError(f"Failed to load quiz data from files: {e}") from e
+            for db_q in db_questions:
+                self.questions.append({
+                    'id': db_q['id'],
+                    'question': db_q['question'],
+                    'options': db_q['options'],
+                    'correct_answer': db_q['correct_answer']
+                })
+            logger.info(f"Successfully loaded {len(self.questions)} questions from database")
         except Exception as e:
-            logger.error(f"Critical error loading data: {str(e)}\n{traceback.format_exc()}")
-            raise DatabaseError(f"Unexpected error during data loading: {e}") from e
+            logger.error(f"Failed to load questions from database: {e}")
+            raise DatabaseError(f"Failed to initialize questions from database: {e}") from e
 
-    def _atomic_save_json(self, filepath: str, data: Any) -> None:
-        """Atomically save JSON data to file with temp file + rename pattern.
-        
-        This prevents data corruption if process is interrupted during save.
-        Uses temp file in same directory + atomic rename.
-        
-        Args:
-            filepath: Target file path
-            data: Data to save as JSON
-            
-        Raises:
-            DatabaseError: If save fails
-        """
-        tmp_path = None
-        try:
-            # Create temp file in same directory for atomic rename
-            dir_path = os.path.dirname(filepath)
-            with tempfile.NamedTemporaryFile(
-                mode='w',
-                dir=dir_path,
-                delete=False,
-                suffix='.tmp'
-            ) as tmp_file:
-                tmp_path = tmp_file.name
-                json.dump(data, tmp_file, indent=2)
-                tmp_file.flush()
-                os.fsync(tmp_file.fileno())  # Force write to disk
-            
-            # Atomic rename (this is atomic on POSIX systems)
-            os.replace(tmp_path, filepath)
-            
-        except Exception as e:
-            # Clean up temp file if it exists
-            if tmp_path and os.path.exists(tmp_path):
-                os.remove(tmp_path)
-            raise DatabaseError(f"Failed to atomically save {filepath}: {e}") from e
-
-    def _acquire_file_lock(self, file_handle, timeout=5):
-        """Acquire exclusive lock on file with timeout.
-        
-        Args:
-            file_handle: Open file handle
-            timeout: Max seconds to wait for lock
-            
-        Returns:
-            bool: True if lock acquired, False if timeout
-        """
-        import time
-        start = time.time()
-        while time.time() - start < timeout:
-            try:
-                fcntl.flock(file_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                return True
-            except IOError:
-                time.sleep(0.1)
-        return False
-
-    def save_data(self, force=False):
-        """Save data with atomic operations and file locking.
-        
-        Uses atomic file writes (temp + rename) and file locking to prevent:
-        - Data corruption from interrupted writes
-        - Race conditions from concurrent operations
-        
-        Args:
-            force (bool): If True, bypass throttling and save immediately.
-                        Defaults to False.
-        
-        Raises:
-            DatabaseError: If file operations fail
-        """
-        current_time = datetime.now()
-        if not force and current_time - self._last_save < self._save_interval:
-            return
-        
-        try:
-            # Atomically save each file
-            self._atomic_save_json(self.questions_file, self.questions)
-            self._atomic_save_json(self.scores_file, self.scores)
-            self._atomic_save_json(self.active_chats_file, self.active_chats)
-            self._atomic_save_json(self.stats_file, self.stats)
-            
-            self._last_save = current_time
-            logger.info(f"Saved {len(self.questions)} questions to all files")
-            
-        except Exception as e:
-            logger.error(f"Failed to save data: {str(e)}")
-            raise DatabaseError(f"Failed to save quiz data: {e}") from e
 
     def _init_user_stats(self, user_id: str) -> None:
         """Initialize stats for a new user with enhanced tracking.
@@ -391,7 +158,6 @@ class QuizManager:
             if user_id_str not in self.stats:
                 logger.info(f"Initializing new stats for user {user_id}")
                 self._init_user_stats(user_id_str)
-                self.save_data(force=True)
 
                 # Return initial stats
                 return {
@@ -412,7 +178,6 @@ class QuizManager:
             # Ensure today's activity exists
             if current_date not in stats['daily_activity']:
                 stats['daily_activity'][current_date] = {'attempts': 0, 'correct': 0}
-                self.save_data()
 
             # Get today's stats
             today_stats = stats['daily_activity'].get(current_date, {'attempts': 0, 'correct': 0})
@@ -445,7 +210,6 @@ class QuizManager:
                 logger.info(f"Syncing score for user {user_id}: {score} != {stats['correct_answers']}")
                 stats['correct_answers'] = score
                 stats['total_quizzes'] = max(stats['total_quizzes'], score)
-                self.save_data(force=True)
 
             formatted_stats = {
                 'total_quizzes': stats['total_quizzes'],
@@ -638,8 +402,7 @@ class QuizManager:
             else:
                 group_stats['current_streak'] = 0
 
-            # Save group stats (user stats already recorded via increment_score -> record_attempt)
-            self.save_data()
+            # Group stats recorded in memory (user stats already recorded via increment_score -> record_attempt)
             logger.debug(f"Recorded group attempt for user {user_id} in chat {chat_id} (correct={is_correct})")
 
         except DatabaseError:
@@ -922,7 +685,6 @@ class QuizManager:
 
             # NOTE: Only save stats.json, scores.json - NOT questions.json
             # questions.json should only be saved during quiz CRUD operations (add/edit/delete)
-            # Removed save_data() to prevent unnecessary I/O on every quiz answer
             logger.info(f"Successfully recorded attempt for user {user_id}: score={self.scores.get(user_id_str)}, streak={stats['current_streak']}")
 
         except ValidationError:
@@ -1035,10 +797,7 @@ class QuizManager:
                 stats['errors'].append(f"Unexpected error: {str(e)}")
 
         if stats['added'] > 0:
-            # Update questions list with new questions
-            self.questions.extend(added_questions)
-            
-            # Save to database - CRITICAL: Ensure all questions are persisted to database
+            # Save to database and update in-memory cache
             for question_obj in added_questions:
                 try:
                     db_id = self.db.add_question(
@@ -1047,6 +806,9 @@ class QuizManager:
                         correct_answer=question_obj['correct_answer']
                     )
                     if db_id:
+                        # Add to in-memory cache with database ID
+                        question_obj['id'] = db_id
+                        self.questions.append(question_obj)
                         stats['db_saved'] += 1
                         logger.info(f"Saved question to database with ID {db_id}: {question_obj['question'][:50]}...")
                     else:
@@ -1056,8 +818,6 @@ class QuizManager:
                     stats['db_failed'] += 1
                     logger.error(f"Database error saving question: {str(e)}\n{traceback.format_exc()}")
             
-            # Force save to JSON immediately after adding questions (backward compatibility)
-            self.save_data(force=True)
             logger.info(f"Added {stats['added']} questions. New total: {len(self.questions)}. DB saved: {stats['db_saved']}, DB failed: {stats['db_failed']}")
 
         return stats
@@ -1102,15 +862,13 @@ class QuizManager:
         if not isinstance(correct_answer, int) or not (0 <= correct_answer < 4):
             raise ValidationError("Correct answer must be 0, 1, 2, or 3")
         
-        # Update question
+        # Update question in memory (note: DB update would need question ID)
         self.questions[index] = {
             'question': question,
             'options': options,
             'correct_answer': correct_answer
         }
         
-        # Force save immediately to ensure persistence
-        self.save_data(force=True)
         logger.info(f"Edited question {index}: {question[:50]}...")
     
     def delete_question(self, index: int):
@@ -1127,119 +885,23 @@ class QuizManager:
             raise ValidationError(f"Question index {index} out of range (0-{len(self.questions)-1})")
         
         deleted = self.questions.pop(index)
-        self.save_data(force=True)
         logger.info(f"Deleted question {index}: {deleted['question'][:50]}...")
 
     def get_all_questions(self) -> List[Dict]:
-        """Get all questions with safe file read.
+        """Get all questions from PostgreSQL database.
         
-        Reloads questions from file with file locking to ensure consistency.
-        Falls back to cached questions if file read fails.
+        Returns cached questions from memory. To refresh cache, call with force_reload.
         
         Returns:
-            List[Dict]: List of all quiz questions.
-        
-        Raises:
-            DatabaseError: If reload fails critically.
+            List[Dict]: List of all quiz questions from cache.
         """
-        try:
-            # Reload with file lock for consistency
-            with open(self.questions_file, 'r') as f:
-                # Try to acquire read lock (non-blocking)
-                try:
-                    fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
-                    self.questions = json.load(f)
-                    fcntl.flock(f, fcntl.LOCK_UN)
-                except IOError:
-                    # File locked, use cached data
-                    pass
-            
-            return self.questions
-        except Exception as e:
-            logger.error(f"Error loading questions: {e}")
-            return self.questions  # Return cached as fallback
+        return self.questions
 
-    def check_integrity(self, auto_fix=False) -> Dict[str, Any]:
-        """Verify database and JSON quiz counts match with optional auto-sync.
-        
-        Compares question counts between database and JSON file.
-        Can automatically sync if mismatch detected.
-        
-        Args:
-            auto_fix (bool): If True, sync JSON to database automatically
-            
-        Returns:
-            Dict with:
-                - 'status': 'synced' or 'mismatch'
-                - 'json_count': int
-                - 'db_count': int
-                - 'difference': int
-                - 'fixed': bool (if auto_fix was used)
-        """
-        try:
-            # Get counts from both sources
-            json_questions = self.questions
-            json_count = len(json_questions)
-            
-            db_questions = self.db.get_all_questions()
-            db_count = len(db_questions)
-            
-            difference = abs(json_count - db_count)
-            
-            result = {
-                'status': 'synced' if json_count == db_count else 'mismatch',
-                'json_count': json_count,
-                'db_count': db_count,
-                'difference': difference,
-                'fixed': False
-            }
-            
-            # Auto-sync if mismatch and auto_fix enabled
-            if difference > 0 and auto_fix:
-                logger.warning(f"Integrity mismatch detected: JSON={json_count}, DB={db_count}. Auto-syncing...")
-                
-                # Determine sync direction based on which is newer/more complete
-                # Use database as source of truth if it has more items
-                if db_count > json_count:
-                    # Sync DB -> JSON (database has more questions)
-                    self.questions = []
-                    for db_q in db_questions:
-                        self.questions.append({
-                            'question': db_q['question'],
-                            'options': db_q['options'],
-                            'correct_answer': db_q['correct_answer'],
-                            'id': db_q['id']
-                        })
-                    self.save_data(force=True)
-                    logger.info(f"Synced {len(self.questions)} questions from database to JSON")
-                else:
-                    # Sync JSON -> DB (JSON has more questions)
-                    # This shouldn't happen normally, but handle it
-                    logger.warning(f"JSON has more questions ({json_count}) than DB ({db_count}). Manual review needed.")
-                
-                result['fixed'] = True
-                result['json_count'] = len(self.questions)
-                result['db_count'] = len(self.db.get_all_questions())
-                result['status'] = 'synced' if result['json_count'] == result['db_count'] else 'mismatch'
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"Integrity check failed: {e}")
-            return {
-                'status': 'error',
-                'json_count': 0,
-                'db_count': 0,
-                'difference': 0,
-                'fixed': False,
-                'error': str(e)
-            }
 
     def delete_question_by_db_id(self, db_id: int) -> bool:
-        """Delete question by database ID from both database and JSON.
+        """Delete question by database ID from PostgreSQL only.
         
-        More reliable than index-based deletion. Handles sync between
-        database and JSON storage.
+        Deletes from database and refreshes in-memory cache.
         
         Args:
             db_id: Database ID of question to delete
@@ -1248,81 +910,65 @@ class QuizManager:
             bool: True if deleted successfully, False if not found
         """
         try:
-            # First delete from database
+            # Delete from database
             if not self.db.delete_question(db_id):
                 logger.warning(f"Question ID {db_id} not found in database")
                 return False
             
-            # Find and delete from JSON by matching ID
-            # Questions should have IDs enriched from database
+            # Remove from in-memory cache
             initial_count = len(self.questions)
             self.questions = [q for q in self.questions if q.get('id') != db_id]
             removed_count = initial_count - len(self.questions)
             
-            if removed_count > 0:
-                # Save immediately after deletion
-                self.save_data(force=True)
-                logger.info(f"Deleted question {db_id} from JSON ({removed_count} items removed)")
-                return True
-            else:
-                # Not found in JSON, but was in database
-                # This indicates desync - run integrity check
-                logger.warning(f"Question {db_id} deleted from DB but not found in JSON. Running integrity check...")
-                integrity = self.check_integrity(auto_fix=True)
-                logger.info(f"Integrity check after deletion: {integrity}")
-                return True
+            logger.info(f"Deleted question {db_id} from database and cache ({removed_count} items removed from cache)")
+            return True
                 
         except Exception as e:
             logger.error(f"Error deleting question {db_id}: {e}")
             raise DatabaseError(f"Failed to delete question {db_id}: {e}") from e
 
-    def get_category_breakdown(self) -> Dict[str, int]:
-        """Get count of questions per category from database.
+    def get_quiz_stats(self) -> Dict:
+        """Get comprehensive quiz statistics from PostgreSQL database.
+        
+        Returns detailed statistics including quiz counts, category breakdown,
+        and integrity status. PostgreSQL-only implementation.
         
         Returns:
-            Dict mapping category names to question counts
+            Dict: Statistics with keys:
+                - total_quizzes: Total number of questions
+                - db_count: Database count (same as total for PostgreSQL-only)
+                - categories: Category breakdown {category: count}
+                - category_count: Number of unique categories
+                - integrity_status: Always 'synced' (PostgreSQL-only)
+                - difference: Always 0 (no dual storage)
         """
         try:
-            db_questions = self.db.get_all_questions()
-            category_counts = {}
+            # Get total count from cache (already loaded from database)
+            total_count = len(self.questions)
             
-            for q in db_questions:
-                category = q.get('category', 'General')
-                category_counts[category] = category_counts.get(category, 0) + 1
-            
-            return category_counts
-        except Exception as e:
-            logger.error(f"Failed to get category breakdown: {e}")
-            return {}
-
-    def get_quiz_stats(self) -> Dict[str, Any]:
-        """Get comprehensive quiz statistics including counts and integrity status.
-        
-        Returns:
-            Dict with total_quizzes, integrity_status, categories, etc.
-        """
-        try:
-            integrity = self.check_integrity(auto_fix=False)
-            categories = self.get_category_breakdown()
+            # Get category breakdown
+            categories = {}
+            for question in self.questions:
+                category = question.get('category', 'General')
+                categories[category] = categories.get(category, 0) + 1
             
             return {
-                'total_quizzes': integrity['json_count'],
-                'db_count': integrity['db_count'],
-                'integrity_status': integrity['status'],
-                'difference': integrity['difference'],
+                'total_quizzes': total_count,
+                'db_count': total_count,
                 'categories': categories,
-                'category_count': len(categories)
+                'category_count': len(categories),
+                'integrity_status': 'synced',
+                'difference': 0
             }
         except Exception as e:
-            logger.error(f"Failed to get quiz stats: {e}")
+            logger.error(f"Error getting quiz stats: {e}")
             return {
                 'total_quizzes': 0,
                 'db_count': 0,
-                'integrity_status': 'error',
-                'difference': 0,
                 'categories': {},
                 'category_count': 0,
-                'error': str(e)
+                'integrity_status': 'error',
+                'difference': 0
             }
 
     def increment_score(self, user_id: int):
@@ -1353,7 +999,6 @@ class QuizManager:
 
         # Record the attempt after synchronizing
         self.record_attempt(user_id, True)
-        self.save_data()
 
     def get_score(self, user_id: int) -> int:
         """Get user's current score.
@@ -1385,8 +1030,6 @@ class QuizManager:
                 self.recent_questions[chat_id_str] = deque(maxlen=50)
                 self.last_question_time[chat_id_str] = {}
                 self._initialize_available_questions(chat_id)
-                # Save changes immediately
-                self.save_data(force=True)
                 logger.info(f"Added chat {chat_id} to active chats with initialization")
         except Exception as e:
             logger.error(f"Error adding chat {chat_id}: {e}")
@@ -1406,8 +1049,6 @@ class QuizManager:
                 if chat_id_str in self.available_questions:
                     del self.available_questions[chat_id_str]
 
-                # Save changes immediately
-                self.save_data(force=True)
                 logger.info(f"Removed chat {chat_id} from active chats with cleanup")
         except Exception as e:
             logger.error(f"Error removing chat {chat_id}: {e}")
@@ -1444,9 +1085,8 @@ class QuizManager:
                     self.active_chats.remove(chat_id)
                     logger.info(f"Removed inactive chat: {chat_id}")
 
-            # Save changes
+            # Log cleanup
             if inactive_chats:
-                self.save_data(force=True)
                 logger.info(f"Cleaned up {len(inactive_chats)} inactive chats")
 
             # Clean up old daily activity data
@@ -1527,9 +1167,6 @@ class QuizManager:
             self.questions = [q for q in self.questions if self.validate_question(q)]
             removed_count = initial_count - len(self.questions)
 
-            # Save changes immediately
-            self.save_data(force=True)
-
             logger.info(f"Removed {removed_count} invalid questions. Remaining: {len(self.questions)}")
             return {
                 'initial_count': initial_count,
@@ -1552,18 +1189,16 @@ class QuizManager:
         """
         try:
             self.questions = []
-            self.save_data(force=True)
-            logger.info("All questions cleared successfully")
+            logger.info("All questions cleared from cache")
             return True
         except Exception as e:
             logger.error(f"Error clearing questions: {e}")
             return False
 
     def reload_data(self):
-        """Reload all data while preserving state.
+        """Reload questions from database and refresh cache.
         
-        Reloads data from files while merging with current state to prevent
-        data loss. Useful for refreshing data without losing in-memory changes.
+        Reloads questions from PostgreSQL database and refreshes in-memory cache.
         
         Returns:
             bool: True if reload successful
@@ -1572,12 +1207,7 @@ class QuizManager:
             DatabaseError: If reload fails
         """
         try:
-            logger.info("Starting full data reload...")
-
-            # Store current state
-            current_stats = self.stats.copy()
-            current_scores = self.scores.copy()
-            current_active_chats = self.active_chats.copy()
+            logger.info("Reloading questions from database...")
 
             # Reset caches and tracking structures
             self._cached_questions = None
@@ -1587,37 +1217,19 @@ class QuizManager:
             self.last_question_time.clear()
             self.available_questions.clear()
 
-            # Reload all data files
-            self.load_data()
-
-            # Merge states
-            self.stats.update(current_stats)
-            self.scores.update(current_scores)
-
-            # Collect all active chats from both direct tracking and user stats
-            all_active_chats = set(current_active_chats)
-
-            # Add chats from group activity in user stats
-            for user_stats in self.stats.values():
-                # Add all group chats from user stats
-                all_active_chats.update(
-                    int(chat_id) for chat_id in user_stats.get('groups', {}).keys()
-                )
-                # Add private chats (where user_id matches chat_id)
-                if user_stats.get('last_quiz_date'):
-                    all_active_chats.add(int(list(user_stats.keys())[0]))
-
-            # Update active_chats with merged unique chats
-            self.active_chats = sorted(all_active_chats)
-
-            # Force save to ensure clean state
-            self.save_data(force=True)
+            # Reload questions from database
+            db_questions = self.db.get_all_questions()
+            self.questions = []
+            for db_q in db_questions:
+                self.questions.append({
+                    'id': db_q['id'],
+                    'question': db_q['question'],
+                    'options': db_q['options'],
+                    'correct_answer': db_q['correct_answer']
+                })
 
             # Log detailed results
             logger.info("Data reload completed successfully:")
-            logger.info(f"- Active chats: {len(self.active_chats)}")
-            logger.info(f"- Active users: {len(self.stats)}")
-            logger.info(f"- Total scores: {len(self.scores)}")
             logger.info(f"- Questions loaded: {len(self.questions)}")
             return True
 
@@ -1820,8 +1432,7 @@ class QuizManager:
                     'last_correct_date': None
                 }
 
-            # Force save to ensure no data loss
-            self.save_data(force=True)
+            # Activity tracked in memory
             logger.info(f"Tracked activity for user {user_id} in chat {chat_id}")
 
         except Exception as e:
@@ -1925,8 +1536,7 @@ class QuizManager:
                     logger.error(f"Error updating stats for user {user_id}: {e}")
                     continue
 
-            # Force save after updates
-            self.save_data(force=True)
+            # Stats updated in memory
             logger.info("All stats updated successfully")
 
         except Exception as e:
