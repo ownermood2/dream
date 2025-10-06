@@ -40,6 +40,7 @@ class Config:
         wifu_id (Optional[int]): Optional additional authorized user ID
         webhook_url (Optional[str]): URL for webhook mode deployment
         render_url (Optional[str]): Render.com deployment URL (takes precedence)
+        host (str): Host address for web server (default: 0.0.0.0)
         port (int): Port number for web server
         database_path (str): Path to SQLite database file
         database_url (Optional[str]): PostgreSQL database URL
@@ -50,6 +51,7 @@ class Config:
     wifu_id: Optional[int]
     webhook_url: Optional[str]
     render_url: Optional[str]
+    host: str
     port: int
     database_path: str
     database_url: Optional[str]
@@ -88,6 +90,7 @@ class Config:
         
         webhook_url = os.environ.get("WEBHOOK_URL")
         render_url = os.environ.get("RENDER_URL")
+        host = os.environ.get("HOST", "0.0.0.0")
         port = int(os.environ.get("PORT", "5000"))
         database_path = os.path.abspath(os.environ.get("DATABASE_PATH", "data/quiz_bot.db"))
         database_url = os.environ.get("DATABASE_URL")
@@ -99,6 +102,7 @@ class Config:
             wifu_id=wifu_id,
             webhook_url=webhook_url,
             render_url=render_url,
+            host=host,
             port=port,
             database_path=database_path,
             database_url=database_url

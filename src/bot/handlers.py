@@ -19,6 +19,7 @@ from telegram.ext import (
     CallbackQueryHandler
 )
 from telegram.constants import ParseMode
+from telegram.error import Conflict
 from src.core import config
 from src.core.database import DatabaseManager
 from src.bot.dev_commands import DeveloperCommands
@@ -480,8 +481,44 @@ class TelegramQuizBot:
         
         logger.info("Registered all callback handlers")
             
+    async def _post_init_setup(self, application: Application) -> None:
+        """Post-initialization setup: preload caches and backfill data"""
+        try:
+            # OPTIMIZATION 3: Pre-load leaderboard cache on startup
+            await self._preload_leaderboard()
+            
+            # Backfill groups from active_chats to database
+            await self.backfill_groups_startup()
+            
+            logger.info("Post-init setup completed successfully")
+        except Exception as e:
+            logger.error(f"Error in post-init setup: {e}")
+    
+    async def conflict_error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle Conflict errors during polling by re-raising to trigger outer retry loop"""
+        if isinstance(context.error, Conflict):
+            logger.error(f"⚠️ Conflict detected: {context.error}")
+            logger.info("🔄 Stopping updater and re-raising Conflict for retry with webhook cleanup...")
+            
+            # Track the error
+            self.track_error('conflict')
+            
+            # Stop updater to cleanly exit from polling before re-raising
+            try:
+                if context.application.updater and context.application.updater.running:
+                    await context.application.updater.stop()
+                    logger.info("✅ Updater stopped")
+            except Exception as e:
+                logger.error(f"Error stopping updater: {e}")
+            
+            # Re-raise the Conflict exception so outer retry loop can catch it
+            raise context.error
+        
+        # Log other errors normally
+        logger.error(f"Error: {context.error}", exc_info=context.error)
+    
     async def initialize(self, token: str):
-        """Initialize and start the bot with robust network configuration"""
+        """Initialize bot with handlers and job queues (ready for run_polling)"""
         try:
             # Build application with network resilience settings
             from telegram.request import HTTPXRequest
@@ -499,6 +536,7 @@ class TelegramQuizBot:
                 Application.builder()
                 .token(token)
                 .request(request)
+                .post_init(self._post_init_setup)
                 .build()
             )
 
@@ -627,26 +665,15 @@ class TelegramQuizBot:
                 name='cleanup_old_activities'
             )
 
-            await self.application.initialize()
-            await self.application.start()
-            
-            # OPTIMIZATION 3: Pre-load leaderboard cache on startup
-            await self._preload_leaderboard()
-            
-            # Backfill groups from active_chats to database
-            # Use bot directly instead of context for startup backfill
-            await self.backfill_groups_startup()
-            
-            if not self.application or not self.application.updater:
-                logger.error("Application or updater not initialized")
-                raise RuntimeError("Application or updater not initialized")
-            
-            await self.application.updater.start_polling()
+            # Register error handler for Conflict errors and other exceptions
+            self.application.add_error_handler(self.conflict_error_handler)
+            logger.info("✅ Conflict error handler registered")
 
+            logger.info("Bot configured and ready for run_polling() (post_init will run setup)")
             return self
 
         except Exception as e:
-            logger.error(f"Failed to initialize bot: {e}")
+            logger.error(f"Failed to configure bot: {e}")
             raise
 
     async def initialize_webhook(self, token: str, webhook_url: str):
