@@ -28,6 +28,47 @@ class DeveloperCommands:
         self.quiz_manager = quiz_manager
         logger.info("Developer commands module initialized")
     
+    def extract_quiz_id_from_message(self, message, context: ContextTypes.DEFAULT_TYPE) -> int | None:
+        """Extract quiz_id from a bot message (poll or text).
+        
+        Args:
+            message: Telegram message object to extract quiz ID from
+            context: Telegram context for accessing bot_data
+            
+        Returns:
+            int: Quiz ID if found, None otherwise
+        """
+        if not message:
+            return None
+        
+        # Check if message is a poll (quiz)
+        if message.poll:
+            poll_id = message.poll.id
+            # Look up in context.bot_data
+            poll_data = context.bot_data.get(f"poll_{poll_id}")
+            if poll_data and 'question_id' in poll_data:
+                logger.debug(f"Extracted quiz_id {poll_data['question_id']} from poll {poll_id}")
+                return poll_data['question_id']
+        
+        # Check message text for quiz ID pattern
+        # Look for patterns like: [ID: 123] or Quiz #123
+        if message.text:
+            match = re.search(r'\[ID:\s*(\d+)\]|Quiz\s*#(\d+)', message.text)
+            if match:
+                quiz_id = int(match.group(1) or match.group(2))
+                logger.debug(f"Extracted quiz_id {quiz_id} from message text")
+                return quiz_id
+        
+        # Check caption for quiz ID pattern (for media messages)
+        if message.caption:
+            match = re.search(r'\[ID:\s*(\d+)\]|Quiz\s*#(\d+)', message.caption)
+            if match:
+                quiz_id = int(match.group(1) or match.group(2))
+                logger.debug(f"Extracted quiz_id {quiz_id} from message caption")
+                return quiz_id
+        
+        return None
+    
     async def check_access(self, update: Update) -> bool:
         """Check if user is authorized (OWNER, WIFU, or any developer in database)"""
         user_id = update.effective_user.id if update.effective_user else None
@@ -329,56 +370,49 @@ class DeveloperCommands:
                 return
             
             # Handle reply to quiz case
-            if update.message.reply_to_message and update.message.reply_to_message.poll:
-                poll_id = update.message.reply_to_message.poll.id
-                poll_data = context.bot_data.get(f"poll_{poll_id}")
+            if update.message.reply_to_message:
+                quiz_id = self.extract_quiz_id_from_message(update.message.reply_to_message, context)
                 
-                if not poll_data:
-                    # Poll data expired - show helpful message
+                if quiz_id:
+                    # Find the quiz by ID
+                    quiz = next((q for q in questions if q.get('id') == quiz_id), None)
+                    
+                    if not quiz:
+                        reply = await update.message.reply_text(
+                            f"❌ Quiz #{quiz_id} not found in database.\n\n"
+                            "💡 Use /editquiz to view all quizzes"
+                        )
+                        await self.auto_clean_message(update.message, reply)
+                        return
+                    
+                    # Store quiz ID in user context
+                    if context.user_data is not None:
+                        context.user_data['pending_delete_quiz'] = quiz['id']
+                    
+                    confirm_text = f"🗑 Confirm Quiz Deletion\n\n"
+                    confirm_text += f"📌 Quiz #{quiz['id']}\n"
+                    confirm_text += f"❓ {quiz['question']}\n\n"
+                    for i, opt in enumerate(quiz['options'], 1):
+                        marker = "✅" if i-1 == quiz['correct_answer'] else "⭕"
+                        confirm_text += f"{i}️⃣ {opt} {marker}\n"
+                    confirm_text += f"\n⚠ Confirm: /delquiz_confirm\n"
+                    confirm_text += "❌ Cancel: Ignore this message\n\n"
+                    confirm_text += "💡 Once confirmed, the quiz will be permanently deleted."
+                    
+                    reply = await update.message.reply_text(confirm_text)
+                    logger.info(f"Quiz deletion confirmation shown for quiz #{quiz['id']} (via reply)")
+                    return
+                else:
+                    # Could not extract quiz ID from replied message
                     reply = await update.message.reply_text(
-                        "❌ Quiz data expired (polls older than 1 hour)\n\n"
-                        "💡 Use /editquiz to view all quizzes\n"
-                        "Then use: /delquiz [quiz_id]"
+                        "❌ Could not find quiz ID in the replied message.\n\n"
+                        "💡 Make sure you're replying to:\n"
+                        "• A quiz poll sent by the bot\n"
+                        "• A message containing quiz information\n\n"
+                        "Or use: /delquiz [quiz_id]"
                     )
                     await self.auto_clean_message(update.message, reply)
                     return
-                
-                # Find the quiz using question_id if available, otherwise fall back to text matching
-                quiz = None
-                question_id = poll_data.get('question_id')
-                
-                if question_id:
-                    # Use question_id for accurate matching
-                    quiz = next((q for q in questions if q.get('id') == question_id), None)
-                else:
-                    # Fallback to text matching for old polls
-                    for q in questions:
-                        if q['question'] == poll_data['question']:
-                            quiz = q
-                            break
-                
-                if not quiz:
-                    reply = await update.message.reply_text("❌ Quiz not found in database")
-                    await self.auto_clean_message(update.message, reply)
-                    return
-                
-                # Store quiz ID in user context
-                if context.user_data is not None:
-                    context.user_data['pending_delete_quiz'] = quiz['id']
-                
-                confirm_text = f"🗑 Confirm Quiz Deletion\n\n"
-                confirm_text += f"📌 Quiz #{quiz['id']}\n"
-                confirm_text += f"❓ {quiz['question']}\n\n"
-                for i, opt in enumerate(quiz['options'], 1):
-                    marker = "✅" if i-1 == quiz['correct_answer'] else "⭕"
-                    confirm_text += f"{i}️⃣ {opt} {marker}\n"
-                confirm_text += f"\n⚠ Confirm: /delquiz_confirm\n"
-                confirm_text += "❌ Cancel: Ignore this message\n\n"
-                confirm_text += "💡 Once confirmed, the quiz will be permanently deleted."
-                
-                reply = await update.message.reply_text(confirm_text)
-                logger.info(f"Quiz deletion confirmation shown for quiz #{quiz['id']}")
-                return
             
             # Handle direct command
             if not context.args:
@@ -564,7 +598,7 @@ class DeveloperCommands:
                 await self.auto_clean_message(update.message, reply)
     
     async def dev(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Enhanced developer management command"""
+        """Enhanced developer management command with contextual diagnostics"""
         start_time = time.time()
         try:
             if not await self.check_access(update):
@@ -572,6 +606,88 @@ class DeveloperCommands:
                 return
             
             if not update.effective_user or not update.effective_chat or not update.message:
+                return
+            
+            # Check if replying to a message for contextual diagnostics
+            if update.message.reply_to_message:
+                replied_msg = update.message.reply_to_message
+                
+                # Build contextual diagnostics
+                diagnostics = "🔍 **Message Diagnostics**\n"
+                diagnostics += "━━━━━━━━━━━━━━━━━━━\n\n"
+                
+                diagnostics += f"**📨 Message Info:**\n"
+                diagnostics += f"• Message ID: `{replied_msg.message_id}`\n"
+                diagnostics += f"• Chat ID: `{replied_msg.chat.id}`\n"
+                diagnostics += f"• Timestamp: {replied_msg.date}\n"
+                
+                if replied_msg.from_user:
+                    diagnostics += f"\n**👤 User Info:**\n"
+                    diagnostics += f"• User ID: `{replied_msg.from_user.id}`\n"
+                    diagnostics += f"• Username: @{replied_msg.from_user.username or 'N/A'}\n"
+                    diagnostics += f"• Name: {replied_msg.from_user.first_name or 'N/A'}\n"
+                
+                # Check if it's a quiz
+                if replied_msg.poll:
+                    poll_id = replied_msg.poll.id
+                    diagnostics += f"\n**📊 Poll Info:**\n"
+                    diagnostics += f"• Poll ID: `{poll_id}`\n"
+                    diagnostics += f"• Question: {replied_msg.poll.question[:50]}...\n"
+                    
+                    # Try to get quiz data from context
+                    poll_data = context.bot_data.get(f"poll_{poll_id}")
+                    if poll_data:
+                        diagnostics += f"\n**🎯 Quiz Data:**\n"
+                        diagnostics += f"• Question ID: `{poll_data.get('question_id', 'N/A')}`\n"
+                        diagnostics += f"• Correct Answer: Option {poll_data.get('correct_option_id', 'N/A') + 1}\n"
+                        diagnostics += f"• Answers: {len(poll_data.get('user_answers', {}))}\n"
+                    else:
+                        diagnostics += f"• Status: ⚠️ Poll data expired/unavailable\n"
+                
+                # Check if it's a media message
+                if replied_msg.photo:
+                    diagnostics += f"\n**📷 Media:**\n"
+                    diagnostics += f"• Type: Photo\n"
+                    diagnostics += f"• File ID: `{replied_msg.photo[-1].file_id[:30]}...`\n"
+                elif replied_msg.video:
+                    diagnostics += f"\n**🎥 Media:**\n"
+                    diagnostics += f"• Type: Video\n"
+                    diagnostics += f"• File ID: `{replied_msg.video.file_id[:30]}...`\n"
+                elif replied_msg.document:
+                    diagnostics += f"\n**📄 Media:**\n"
+                    diagnostics += f"• Type: Document\n"
+                    diagnostics += f"• File ID: `{replied_msg.document.file_id[:30]}...`\n"
+                
+                # Check for text content
+                if replied_msg.text:
+                    text_preview = replied_msg.text[:100] + "..." if len(replied_msg.text) > 100 else replied_msg.text
+                    diagnostics += f"\n**📝 Text Content:**\n"
+                    diagnostics += f"```\n{text_preview}\n```\n"
+                elif replied_msg.caption:
+                    caption_preview = replied_msg.caption[:100] + "..." if len(replied_msg.caption) > 100 else replied_msg.caption
+                    diagnostics += f"\n**📝 Caption:**\n"
+                    diagnostics += f"```\n{caption_preview}\n```\n"
+                
+                diagnostics += "\n━━━━━━━━━━━━━━━━━━━\n"
+                diagnostics += "💡 Use this info to debug issues or verify data"
+                
+                # Log contextual diagnostics activity
+                self.db.log_activity(
+                    activity_type='command',
+                    user_id=update.effective_user.id,
+                    chat_id=update.effective_chat.id,
+                    username=update.effective_user.username or "",
+                    command='/dev',
+                    details={
+                        'action': 'contextual_diagnostics',
+                        'replied_msg_id': replied_msg.message_id,
+                        'replied_msg_type': 'poll' if replied_msg.poll else 'message'
+                    },
+                    success=True
+                )
+                
+                reply = await update.message.reply_text(diagnostics, parse_mode=ParseMode.MARKDOWN)
+                logger.info(f"Showed contextual diagnostics for message {replied_msg.message_id}")
                 return
             
             # Determine action for logging
@@ -592,12 +708,15 @@ class DeveloperCommands:
             
             if not context.args:
                 reply = await update.message.reply_text(
-                    "🔧 Developer Management\n\n"
-                    "Commands:\n"
+                    "🔧 **Developer Management**\n\n"
+                    "**Commands:**\n"
                     "• /dev [user_id] - Add developer (quick add)\n"
                     "• /dev add [user_id] - Add developer\n"
                     "• /dev remove [user_id] - Remove developer\n"
-                    "• /dev list - Show all developers"
+                    "• /dev list - Show all developers\n\n"
+                    "**💡 Reply Mode:**\n"
+                    "• Reply to any message with /dev to see diagnostics",
+                    parse_mode=ParseMode.MARKDOWN
                 )
                 await self.auto_clean_message(update.message, reply)
                 return
@@ -2334,6 +2453,47 @@ Type: {activity_type.upper()}
                 await self.send_unauthorized_message(update)
                 return
             
+            # Check if replying to a quiz message
+            if update.message and update.message.reply_to_message:
+                quiz_id = self.extract_quiz_id_from_message(update.message.reply_to_message, context)
+                
+                if quiz_id:
+                    # Jump directly to edit mode for this quiz
+                    quiz = self.db.get_question_by_id(quiz_id)
+                    
+                    if quiz:
+                        logger.info(f"Editing quiz #{quiz_id} via reply")
+                        await self._show_quiz_editor(update, context, quiz_id)
+                        
+                        response_time = int((time.time() - start_time) * 1000)
+                        self.db.log_activity(
+                            activity_type='command',
+                            user_id=update.effective_user.id,
+                            chat_id=update.effective_message.chat_id,
+                            username=update.effective_user.username or "",
+                            command='/editquiz',
+                            details={'quiz_id': quiz_id, 'via_reply': True},
+                            success=True,
+                            response_time_ms=response_time
+                        )
+                        return
+                    else:
+                        reply = await update.message.reply_text(
+                            f"❌ Quiz #{quiz_id} not found in database."
+                        )
+                        await self.auto_clean_message(update.message, reply)
+                        return
+                else:
+                    # Could not extract quiz ID
+                    reply = await update.message.reply_text(
+                        "❌ Could not find quiz ID in the replied message.\n\n"
+                        "💡 Reply to a quiz poll to edit it,\n"
+                        "or use /editquiz to browse all quizzes."
+                    )
+                    await self.auto_clean_message(update.message, reply)
+                    return
+            
+            # Original behavior: show quiz list or specific quiz
             args = context.args if context.args else []
             
             if len(args) > 0 and args[0].isdigit():

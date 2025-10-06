@@ -52,6 +52,7 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
 -   **Universal PM Tracking**: All user interactions in private messages are tracked for better targeting and analytics.
 -   **Rate Limiting System**: Three-tier rate limiting (Heavy/Medium/Light commands) with sliding window algorithm, developer bypass, automatic cleanup, and violation logging. Prevents command spam while maintaining smooth UX.
 -   **Quiz Management**: Complete quiz lifecycle management including /addquiz for creation and /editquiz for interactive editing with pagination, field-by-field updates, and audit logging.
+-   **Reply-Based Command UX**: Developer commands support context-aware replies for intuitive workflows. Reply to quiz messages with /delquiz or /editquiz for instant actions. Reply to any message with /broadcast to rebroadcast it, or /dev for contextual diagnostics.
 -   **Interactive UX Features**:
     - **Leaderboard Command**: `/leaderboard` displays top 10 quiz champions with medals, scores, and accuracy. Auto-cleanup in groups (3-second delay). 60-second caching for performance.
     - **Post-Quiz Action Buttons**: After answering quizzes in private chats, users see 4 action buttons: Play Again, My Stats, Leaderboard, and Categories for seamless navigation.
@@ -64,6 +65,7 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
 -   **No Import-Time Side Effects**: Lazy initialization prevents gunicorn crashes.
 -   **Dual-Mode Architecture**: Auto-detects mode based on environment variables.
 -   **Docker Support**: Complete Docker deployment with multi-stage Dockerfile and docker-compose.yml (bot + PostgreSQL + Redis). Production-optimized with health checks, volume persistence, and security best practices.
+-   **Comprehensive Test Suite**: 118 pytest tests covering database, quiz logic, rate limiting, handlers, and developer commands. 70%+ coverage with fast execution, strong assertions, and CI-ready configuration.
 -   **Advanced Broadcasts**: Versatile broadcast system.
 -   **Automated Scheduling**: Persistent quiz scheduling to active groups.
 -   **Robust Error Handling & Logging**: Comprehensive logging and error recovery.

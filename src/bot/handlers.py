@@ -1516,6 +1516,7 @@ Your complete command guide is here:
 
 /dev - 👑 Manage developer access
     _Add or remove developer privileges_
+    _💡 Reply to any message with /dev for diagnostics_
 
 /stats - 📊 Bot analytics dashboard
     _Real-time stats, performance, and activity_
@@ -1525,18 +1526,32 @@ Your complete command guide is here:
 
 /broadcast - 📣 Send announcements
     _Broadcast messages to all users or groups_
+    _💡 Reply to a message with /broadcast to send it_
 
 /addquiz - ➕ Add new questions
     _Add quiz questions to the database_
 
 /editquiz - ✏️ Edit questions
     _Modify existing quiz questions_
+    _💡 Reply to a quiz with /editquiz to edit directly_
 
 /delquiz - 🗑️ Delete questions
     _Remove quiz questions from database_
+    _💡 Reply to a quiz with /delquiz to delete it_
 
 /totalquiz - 🔢 Total quiz count
     _View total number of available quizzes_
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**🎯 REPLY-BASED SHORTCUTS**
+
+Reply to a quiz poll with:
+• /delquiz - Delete that specific quiz
+• /editquiz - Edit that specific quiz
+
+Reply to any message with:
+• /broadcast - Broadcast that message
+• /dev - Get message diagnostics
 """
 
             help_text += f"""
