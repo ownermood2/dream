@@ -521,7 +521,6 @@ class TelegramQuizBot:
             self.application.add_handler(CommandHandler("delquiz_confirm", self.dev_commands.delquiz_confirm))
             self.application.add_handler(CommandHandler("dev", self.dev_commands.dev))
             self.application.add_handler(CommandHandler("stats", self.stats_command))
-            self.application.add_handler(CommandHandler("status", self.dev_commands.status))
             self.application.add_handler(CommandHandler("broadcast", self.dev_commands.broadcast))
             self.application.add_handler(CommandHandler("broadcast_confirm", self.dev_commands.broadcast_confirm))
             self.application.add_handler(CommandHandler("delbroadcast", self.dev_commands.delbroadcast))
@@ -692,7 +691,6 @@ class TelegramQuizBot:
             self.application.add_handler(CommandHandler("delquiz_confirm", self.dev_commands.delquiz_confirm))
             self.application.add_handler(CommandHandler("dev", self.dev_commands.dev))
             self.application.add_handler(CommandHandler("stats", self.stats_command))
-            self.application.add_handler(CommandHandler("status", self.dev_commands.status))
             self.application.add_handler(CommandHandler("broadcast", self.dev_commands.broadcast))
             self.application.add_handler(CommandHandler("broadcast_confirm", self.dev_commands.broadcast_confirm))
             self.application.add_handler(CommandHandler("delbroadcast", self.dev_commands.delbroadcast))
@@ -1495,7 +1493,6 @@ Need more help? We're here for you! 🌟"""
 
 /dev — 🔐 Manage developer access  
 /stats — 📊 Bot analytics  
-/status — 🤖 System info  
 /broadcast — 📣 Announce globally  
 /addquiz — ➕ Add quiz  
 /editquiz — ✏️ Edit quiz  
