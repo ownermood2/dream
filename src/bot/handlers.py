@@ -1470,13 +1470,10 @@ Need more help? We're here for you! 🌟"""
             # Get user and bot info for personalization
             user = update.effective_user
             user_first = user.first_name or 'User'
-            user_id = user.id
             bot_username = context.bot.username or "MissQuiz_Bot"
             
             help_text = f"""╔════════════════════════════════════════╗
 ║  ✨ 𝐌𝐈𝐒𝐒 𝐐𝐔𝐈𝐙 𓂀 𝐁𝐎𝐓 — 𝐇𝐄𝐋𝐏 𝐂𝐄𝐍𝐓𝐄𝐑  ║
-║ 👤 User: [{user_first}](tg://user?id={user_id}) ║
-║ 🤖 Bot: [𝐌𝐈𝐒𝐒 𝐐𝐔𝐈𝐙 𓂀 𝐁𝐎𝐓](https://t.me/{bot_username}) ║
 ╚════════════════════════════════════════╝
 
 👋 𝐖𝐞𝐥𝐜𝐨𝐦𝐞, {user_first}!  
@@ -1488,7 +1485,7 @@ Need more help? We're here for you! 🌟"""
 /help — 📖 Show help menu  
 /quiz — 🎲 Random quiz  
 /category — 📚 Browse categories  
-/mystats — 📈 Your stats  
+/mystats — 📈 Your stats    
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
             # Add developer commands only for developers
@@ -1503,6 +1500,7 @@ Need more help? We're here for you! 🌟"""
 /addquiz — ➕ Add quiz  
 /editquiz — ✏️ Edit quiz  
 /delquiz — 🗑️ Delete quiz  
+/totalquiz — 🔢 Total quizzes
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
             help_text += f"""
