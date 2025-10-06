@@ -2006,46 +2006,44 @@ Ready to begin? Try /quiz now! 🚀"""
             # Add questions and get stats
             stats = self.quiz_manager.add_questions(questions_data, allow_duplicates=allow_duplicates)
             
-            # Get user stats from database in real-time
-            user_stats = self.db.get_user_quiz_stats_realtime(update.effective_user.id)
-            
-            # Get user rank
-            user_rank = self.db.get_user_rank(update.effective_user.id)
-            if user_rank == 0:
-                user_rank = 'N/A'
-            
-            # Get user stats data
-            total_quizzes = user_stats.get('total_quizzes', 0) if user_stats else 0
-            correct_answers = user_stats.get('correct_answers', 0) if user_stats else 0
-            wrong_answers = user_stats.get('wrong_answers', 0) if user_stats else 0
-            
             # Get total quiz count from quiz manager
             quiz_stats = self.quiz_manager.get_quiz_stats()
             total_quiz_count = quiz_stats['total_quizzes']
             
-            # Build combined response with both user stats and quiz library stats
-            response = f"""╔═════════════════════════╗
-║ 📊  𝐁𝐎𝐓 & 𝐔𝐒𝐄𝐑 𝐒𝐓𝐀𝐓𝐒 𝐃𝐀𝐒𝐇𝐁𝐎𝐀𝐑𝐃 
-╚═════════════════════════╝
+            # Build response based on results
+            added = stats['added']
+            duplicates = stats['rejected']['duplicates']
+            invalid = stats['rejected']['invalid_format'] + stats['rejected']['invalid_options']
+            
+            if added > 0:
+                # Success message
+                response = f"""✅ **Quiz Added Successfully!**
 
-👤 𝐔𝐬𝐞𝐫: {update.effective_user.first_name}
-🏆 𝐑𝐚𝐧𝐤: #{user_rank}
-🎮 𝐓𝐨𝐭𝐚𝐥 𝐐𝐮𝐢𝐳𝐳𝐞𝐬 𝐀𝐭𝐭𝐞𝐦𝐩𝐭𝐞𝐝: {total_quizzes}
+📝 Added: {added} question{'s' if added != 1 else ''}
+📚 Total Quizzes: {total_quiz_count}"""
+                
+                if duplicates > 0:
+                    response += f"\n⚠️ Skipped {duplicates} duplicate{'s' if duplicates != 1 else ''}"
+                if invalid > 0:
+                    response += f"\n❌ Rejected {invalid} invalid question{'s' if invalid != 1 else ''}"
+                    
+                response += "\n\n━━━━━━━━━━━━━━━━━━\n💡 Use /totalquiz to see all quizzes"
+            else:
+                # No questions added
+                response = f"""❌ **No Questions Added**
 
-━━━━━━━━━━━━━━━━━━
-🎯 𝐏𝐄𝐑𝐅𝐎𝐑𝐌𝐀𝐍𝐂𝐄 𝐒𝐓𝐀𝐓𝐒
-━━━━━━━━━━━━━━━━━━
-✅ 𝐂𝐨𝐫𝐫𝐞𝐜𝐭 𝐀𝐧𝐬𝐰𝐞𝐫𝐬: {correct_answers}
-❌ 𝐖𝐫𝐨𝐧𝐠 𝐀𝐧𝐬𝐰𝐞𝐫𝐬: {wrong_answers}
+"""
+                if duplicates > 0:
+                    response += f"⚠️ All {duplicates} question{'s' if duplicates != 1 else ''} already exist in database!\n\n"
+                if invalid > 0:
+                    response += f"❌ {invalid} question{'s' if invalid != 1 else ''} {'were' if invalid != 1 else 'was'} invalid\n\n"
+                
+                response += f"""💡 **Solutions:**
+• Add NEW questions that don't exist yet
+• Use --allow-duplicates flag to override:
+  `/addquiz --allow-duplicates question | options...`
 
-╔═══════════════════════════════════╗
-║ 📚  𝗤𝗨𝗜𝗭 𝗟𝗜𝗕𝗥𝗔𝗥𝗬 𝗦𝗧𝗔𝗧𝗦  ║
-╚═══════════════════════════════════╝
-
-✨ Total Quizzes Available: {total_quiz_count}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-➕ Use /addquiz to contribute new quizzes  
-💡 Use /help to explore all commands"""
+📚 Current Total: {total_quiz_count} quizzes"""
 
             await update.message.reply_text(response)
             response_time = int((time.time() - start_time) * 1000)
