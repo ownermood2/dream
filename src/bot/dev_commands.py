@@ -824,55 +824,45 @@ class DeveloperCommands:
             elif action == "list":
                 developers = self.db.get_all_developers()
                 
-                dev_text = "👥 Developer List\n\n"
+                # Premium formatted developer panel with Unicode box drawing
+                dev_text = """╔═════════════════════════════════╗
+║ 👥 𝐃𝐞𝐯𝐞𝐥𝐨𝐩𝐞𝐫 & 𝐀𝐝𝐦𝐢𝐧 𝐏𝐚𝐧𝐞𝐥 ║
+╚═════════════════════════════════╝
+
+👑 𝗗𝗘𝗩𝗘𝗟𝗢𝗣𝗘𝗥𝗦
+━━━━━━━━━━━━━━━━━━\n"""
                 
-                # Get OWNER and WIFU info with clickable profile links
-                owner_info = []
-                wifu_info = []
-                
+                # Get OWNER info
                 try:
-                    # Fetch OWNER info
                     owner_user = await context.bot.get_chat(config.OWNER_ID)
-                    owner_name = f'<a href="tg://user?id={config.OWNER_ID}">{owner_user.first_name}</a>'
-                    owner_info.append(f"{owner_name} (ID: {config.OWNER_ID})")
+                    owner_name = owner_user.first_name
                 except:
-                    owner_info.append(f"OWNER (ID: {config.OWNER_ID})")
+                    owner_name = "Owner"
                 
-                # Fetch WIFU info if exists
+                dev_text += f"• {owner_name} (ID: {config.OWNER_ID})\n"
+                
+                # Get WIFU info if exists
                 if config.WIFU_ID:
                     try:
                         wifu_user = await context.bot.get_chat(config.WIFU_ID)
-                        wifu_name = f'<a href="tg://user?id={config.WIFU_ID}">{wifu_user.first_name}</a>'
-                        wifu_info.append(f"{wifu_name} (ID: {config.WIFU_ID})")
+                        wifu_name = wifu_user.first_name
+                        # Check if name has emoji, otherwise it might be the second developer
+                        dev_text += f"• {wifu_name} (ID: {config.WIFU_ID})\n"
                     except:
-                        wifu_info.append(f"WIFU (ID: {config.WIFU_ID})")
+                        dev_text += f"• Developer (ID: {config.WIFU_ID})\n"
                 
-                # Build owner/wifu line
-                if wifu_info:
-                    dev_text += f"👑 {owner_info[0]} & {wifu_info[0]} 🤌❤️\n"
-                else:
-                    dev_text += f"👑 {owner_info[0]} & OWNER WIFU 🤌❤️\n"
-                
-                dev_text += "---\n"
-                dev_text += "🛡 Admin List\n\n"
-                
-                # Show other developers with clickable profile links
-                if not developers:
-                    dev_text += "No additional admins configured"
-                else:
+                # Show other developers from database
+                if developers:
                     for dev in developers:
                         try:
                             dev_user = await context.bot.get_chat(dev['user_id'])
-                            dev_name = f'<a href="tg://user?id={dev["user_id"]}">{dev_user.first_name}</a>'
-                            dev_text += f"▫️ {dev_name} (ID: {dev['user_id']})\n"
+                            dev_name = dev_user.first_name
+                            dev_text += f"• {dev_name} (ID: {dev['user_id']})\n"
                         except:
-                            # Fallback if can't fetch user info - escape special chars
                             username = dev.get('username') or dev.get('first_name') or f"User{dev['user_id']}"
-                            # Escape HTML special characters
-                            username = username.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                            dev_text += f"▫️ {username} (ID: {dev['user_id']})\n"
+                            dev_text += f"• {username} (ID: {dev['user_id']})\n"
                 
-                reply = await update.message.reply_text(dev_text, parse_mode=ParseMode.HTML)
+                reply = await update.message.reply_text(dev_text)
                 await self.auto_clean_message(update.message, reply)
             
             else:
