@@ -1,0 +1,98 @@
+# MissQuiz Telegram Bot - Docker Compose Configuration
+#
+# Quick Start:
+#   1. Copy .env.example to .env and configure your variables
+#   2. Run: docker-compose up -d
+#   3. View logs: docker-compose logs -f bot
+#   4. Stop: docker-compose down
+#   5. Rebuild: docker-compose up -d --build
+#
+# For data persistence, volumes are automatically created:
+#   - postgres-data: PostgreSQL database files
+#   - redis-data: Redis persistence files
+
+version: '3.8'
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: missquiz-bot
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    ports:
+      - "5000:5000"
+    networks:
+      - missquiz-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: missquiz-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: missquiz
+      POSTGRES_PASSWORD: missquiz_password
+      POSTGRES_DB: missquiz_db
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - missquiz-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U missquiz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    container_name: missquiz-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass missquiz_redis_pass
+    volumes:
+      - redis-data:/data
+    networks:
+      - missquiz-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "missquiz_redis_pass", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+
+networks:
+  missquiz-net:
+    driver: bridge
