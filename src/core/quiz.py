@@ -266,7 +266,6 @@ class QuizManager:
             
             # Atomic rename (this is atomic on POSIX systems)
             os.replace(tmp_path, filepath)
-            logger.debug(f"Atomically saved to {filepath}")
             
         except Exception as e:
             # Clean up temp file if it exists
@@ -315,14 +314,12 @@ class QuizManager:
         try:
             # Atomically save each file
             self._atomic_save_json(self.questions_file, self.questions)
-            logger.info(f"Saved {len(self.questions)} questions atomically")
-            
             self._atomic_save_json(self.scores_file, self.scores)
             self._atomic_save_json(self.active_chats_file, self.active_chats)
             self._atomic_save_json(self.stats_file, self.stats)
             
             self._last_save = current_time
-            logger.info(f"All data saved successfully. Questions count: {len(self.questions)}")
+            logger.info(f"Saved {len(self.questions)} questions to all files")
             
         except Exception as e:
             logger.error(f"Failed to save data: {str(e)}")
@@ -1155,13 +1152,178 @@ class QuizManager:
                     fcntl.flock(f, fcntl.LOCK_UN)
                 except IOError:
                     # File locked, use cached data
-                    logger.debug("Questions file locked, using cached data")
+                    pass
             
-            logger.debug(f"Loaded {len(self.questions)} questions")
             return self.questions
         except Exception as e:
             logger.error(f"Error loading questions: {e}")
             return self.questions  # Return cached as fallback
+
+    def check_integrity(self, auto_fix=False) -> Dict[str, Any]:
+        """Verify database and JSON quiz counts match with optional auto-sync.
+        
+        Compares question counts between database and JSON file.
+        Can automatically sync if mismatch detected.
+        
+        Args:
+            auto_fix (bool): If True, sync JSON to database automatically
+            
+        Returns:
+            Dict with:
+                - 'status': 'synced' or 'mismatch'
+                - 'json_count': int
+                - 'db_count': int
+                - 'difference': int
+                - 'fixed': bool (if auto_fix was used)
+        """
+        try:
+            # Get counts from both sources
+            json_questions = self.questions
+            json_count = len(json_questions)
+            
+            db_questions = self.db.get_all_questions()
+            db_count = len(db_questions)
+            
+            difference = abs(json_count - db_count)
+            
+            result = {
+                'status': 'synced' if json_count == db_count else 'mismatch',
+                'json_count': json_count,
+                'db_count': db_count,
+                'difference': difference,
+                'fixed': False
+            }
+            
+            # Auto-sync if mismatch and auto_fix enabled
+            if difference > 0 and auto_fix:
+                logger.warning(f"Integrity mismatch detected: JSON={json_count}, DB={db_count}. Auto-syncing...")
+                
+                # Determine sync direction based on which is newer/more complete
+                # Use database as source of truth if it has more items
+                if db_count > json_count:
+                    # Sync DB -> JSON (database has more questions)
+                    self.questions = []
+                    for db_q in db_questions:
+                        self.questions.append({
+                            'question': db_q['question'],
+                            'options': db_q['options'],
+                            'correct_answer': db_q['correct_answer'],
+                            'id': db_q['id']
+                        })
+                    self.save_data(force=True)
+                    logger.info(f"Synced {len(self.questions)} questions from database to JSON")
+                else:
+                    # Sync JSON -> DB (JSON has more questions)
+                    # This shouldn't happen normally, but handle it
+                    logger.warning(f"JSON has more questions ({json_count}) than DB ({db_count}). Manual review needed.")
+                
+                result['fixed'] = True
+                result['json_count'] = len(self.questions)
+                result['db_count'] = len(self.db.get_all_questions())
+                result['status'] = 'synced' if result['json_count'] == result['db_count'] else 'mismatch'
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Integrity check failed: {e}")
+            return {
+                'status': 'error',
+                'json_count': 0,
+                'db_count': 0,
+                'difference': 0,
+                'fixed': False,
+                'error': str(e)
+            }
+
+    def delete_question_by_db_id(self, db_id: int) -> bool:
+        """Delete question by database ID from both database and JSON.
+        
+        More reliable than index-based deletion. Handles sync between
+        database and JSON storage.
+        
+        Args:
+            db_id: Database ID of question to delete
+            
+        Returns:
+            bool: True if deleted successfully, False if not found
+        """
+        try:
+            # First delete from database
+            if not self.db.delete_question(db_id):
+                logger.warning(f"Question ID {db_id} not found in database")
+                return False
+            
+            # Find and delete from JSON by matching ID
+            # Questions should have IDs enriched from database
+            initial_count = len(self.questions)
+            self.questions = [q for q in self.questions if q.get('id') != db_id]
+            removed_count = initial_count - len(self.questions)
+            
+            if removed_count > 0:
+                # Save immediately after deletion
+                self.save_data(force=True)
+                logger.info(f"Deleted question {db_id} from JSON ({removed_count} items removed)")
+                return True
+            else:
+                # Not found in JSON, but was in database
+                # This indicates desync - run integrity check
+                logger.warning(f"Question {db_id} deleted from DB but not found in JSON. Running integrity check...")
+                integrity = self.check_integrity(auto_fix=True)
+                logger.info(f"Integrity check after deletion: {integrity}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Error deleting question {db_id}: {e}")
+            raise DatabaseError(f"Failed to delete question {db_id}: {e}") from e
+
+    def get_category_breakdown(self) -> Dict[str, int]:
+        """Get count of questions per category from database.
+        
+        Returns:
+            Dict mapping category names to question counts
+        """
+        try:
+            db_questions = self.db.get_all_questions()
+            category_counts = {}
+            
+            for q in db_questions:
+                category = q.get('category', 'General')
+                category_counts[category] = category_counts.get(category, 0) + 1
+            
+            return category_counts
+        except Exception as e:
+            logger.error(f"Failed to get category breakdown: {e}")
+            return {}
+
+    def get_quiz_stats(self) -> Dict[str, Any]:
+        """Get comprehensive quiz statistics including counts and integrity status.
+        
+        Returns:
+            Dict with total_quizzes, integrity_status, categories, etc.
+        """
+        try:
+            integrity = self.check_integrity(auto_fix=False)
+            categories = self.get_category_breakdown()
+            
+            return {
+                'total_quizzes': integrity['json_count'],
+                'db_count': integrity['db_count'],
+                'integrity_status': integrity['status'],
+                'difference': integrity['difference'],
+                'categories': categories,
+                'category_count': len(categories)
+            }
+        except Exception as e:
+            logger.error(f"Failed to get quiz stats: {e}")
+            return {
+                'total_quizzes': 0,
+                'db_count': 0,
+                'integrity_status': 'error',
+                'difference': 0,
+                'categories': {},
+                'category_count': 0,
+                'error': str(e)
+            }
 
     def increment_score(self, user_id: int):
         """Increment user's score and synchronize with statistics.

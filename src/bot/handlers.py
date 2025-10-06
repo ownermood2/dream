@@ -2093,7 +2093,7 @@ Ready to begin? Try /quiz now! 🚀"""
 
             await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
             response_time = int((time.time() - start_time) * 1000)
-            logger.info(f"/addquiz completed in {response_time}ms - added {stats['added']} quizzes (DB: {stats['db_saved']}, duplicates allowed: {allow_duplicates})")
+            logger.info(f"/addquiz: Added {stats['added']} quizzes in {response_time}ms")
 
         except Exception as e:
             response_time = int((time.time() - start_time) * 1000)
@@ -2470,6 +2470,7 @@ Failed to display quizzes. Please try again later.
             logger.error(f"Error cleaning up old polls: {e}")
 
     async def totalquiz(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Enhanced /totalquiz command with integrity verification and category breakdown"""
         if not update.message:
             return
         if not update.effective_user:
@@ -2479,18 +2480,55 @@ Failed to display quizzes. Please try again later.
         
         start_time = time.time()
         try:
-            total_questions = len(self.quiz_manager.get_all_questions())
+            # Get comprehensive quiz statistics
+            quiz_stats = self.quiz_manager.get_quiz_stats()
             
-            response = f"""════════════════
-📚 Total Quizzes Available: {total_questions}
-════════════════
+            # Determine integrity status icon
+            if quiz_stats['integrity_status'] == 'synced':
+                integrity_icon = "✅"
+                integrity_text = "All systems synced"
+            elif quiz_stats['integrity_status'] == 'mismatch':
+                integrity_icon = "⚠️"
+                integrity_text = f"Mismatch detected (Δ{quiz_stats['difference']})"
+            else:
+                integrity_icon = "❌"
+                integrity_text = "Error checking integrity"
+            
+            # Build category breakdown text
+            categories = quiz_stats.get('categories', {})
+            category_text = ""
+            if categories:
+                # Sort by count descending
+                sorted_categories = sorted(categories.items(), key=lambda x: x[1], reverse=True)
+                for cat_name, count in sorted_categories[:5]:  # Show top 5 categories
+                    category_text += f"  • {cat_name}: {count} quizzes\n"
+                
+                if len(categories) > 5:
+                    remaining = len(categories) - 5
+                    category_text += f"  • ... and {remaining} more categories\n"
+            else:
+                category_text = "  • No categories available\n"
+            
+            # Build comprehensive response
+            response = f"""📊 𝗤𝘂𝗶𝘇 𝗦𝘁𝗮𝘁𝗶𝘀𝘁𝗶𝗰𝘀
+══════════════════
 
-Use /addquiz to add more quizzes!
-Use/help to see all commands."""
+📚 **Total Quizzes Available:** {quiz_stats['total_quizzes']:,}
+
+{integrity_icon} **Integrity Status:** {integrity_text}
+  └ JSON File: {quiz_stats['total_quizzes']:,} quizzes
+  └ Database: {quiz_stats['db_count']:,} quizzes
+
+📁 **Categories ({quiz_stats['category_count']}):**
+{category_text}
+══════════════════
+
+💡 Use /addquiz to add more quizzes!
+💡 Use /help to see all commands."""
 
             await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
             response_time = int((time.time() - start_time) * 1000)
-            logger.info(f"Sent quiz count to user {update.effective_user.id} in {response_time}ms")
+            logger.info(f"/totalquiz: {quiz_stats['total_quizzes']} quizzes, {quiz_stats['integrity_status']} ({response_time}ms)")
 
         except Exception as e:
             response_time = int((time.time() - start_time) * 1000)
@@ -2503,8 +2541,8 @@ Use/help to see all commands."""
                 success=False,
                 response_time_ms=response_time
             )
-            logger.error(f"Error in totalquiz command: {e}\n{traceback.format_exc()}")
-            await update.message.reply_text("❌ Error getting total quiz count.")
+            logger.error(f"Error in totalquiz command: {e}")
+            await update.message.reply_text("❌ Error getting total quiz count. Please try again.")
 
     async def send_automated_quiz(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Send automated quiz to all active group chats"""

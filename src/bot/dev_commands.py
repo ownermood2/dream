@@ -465,7 +465,6 @@ class DeveloperCommands:
             
             # Calculate response time at end
             response_time = int((time.time() - start_time) * 1000)
-            logger.debug(f"Command /delquiz completed in {response_time}ms")
         
         except Exception as e:
             response_time = int((time.time() - start_time) * 1000)
@@ -522,31 +521,14 @@ class DeveloperCommands:
             questions = self.db.get_all_questions()
             quiz_to_delete = next((q for q in questions if q['id'] == quiz_id), None)
             
-            # Delete from database
-            if self.db.delete_question(quiz_id):
-                # CRITICAL FIX: Also delete from quiz_manager's in-memory list and JSON file
-                # Match by question text since JSON questions don't have IDs
-                if quiz_to_delete:
-                    try:
-                        json_questions = self.quiz_manager.get_all_questions()
-                        # Find matching question by text
-                        quiz_index = next(
-                            (i for i, q in enumerate(json_questions) 
-                             if q.get('question', '').strip() == quiz_to_delete['question'].strip()),
-                            None
-                        )
-                        
-                        if quiz_index is not None:
-                            self.quiz_manager.delete_question(quiz_index)
-                            logger.info(f"Deleted quiz from quiz_manager at index {quiz_index}")
-                        else:
-                            logger.warning(f"Could not find quiz in quiz_manager with question: {quiz_to_delete['question'][:50]}")
-                    except Exception as e:
-                        logger.error(f"Error deleting from quiz_manager: {e}")
-                
+            # Delete using reliable database ID method
+            if self.quiz_manager.delete_question_by_db_id(quiz_id):
                 # Clear the pending delete
                 if context.user_data is not None:
                     context.user_data.pop('pending_delete_quiz', None)
+                
+                # Get updated counts with integrity check
+                quiz_stats = self.quiz_manager.get_quiz_stats()
                 
                 # Log comprehensive quiz deletion activity
                 self.db.log_activity(
@@ -558,17 +540,19 @@ class DeveloperCommands:
                     details={
                         'deleted_quiz_id': quiz_id,
                         'question_text': quiz_to_delete['question'][:100] if quiz_to_delete else None,
-                        'remaining_quizzes': len(self.db.get_all_questions())
+                        'remaining_quizzes': quiz_stats['total_quizzes'],
+                        'integrity_status': quiz_stats['integrity_status']
                     },
                     success=True
                 )
                 
-                # Get updated count from database
-                remaining_count = len(self.db.get_all_questions())
+                # Get updated count from database with integrity verification
+                integrity_icon = "✅" if quiz_stats['integrity_status'] == 'synced' else "⚠️"
                 
                 reply = await update.message.reply_text(
                     f"✅ Quiz #{quiz_id} deleted successfully! 🗑️\n\n"
-                    f"Remaining quizzes: {remaining_count}"
+                    f"📊 Remaining quizzes: {quiz_stats['total_quizzes']}\n"
+                    f"{integrity_icon} Integrity: {quiz_stats['integrity_status']}"
                 )
                 logger.info(f"Quiz #{quiz_id} deleted by user {update.effective_user.id}")
                 await self.auto_clean_message(update.message, reply, delay=3)
@@ -578,7 +562,6 @@ class DeveloperCommands:
             
             # Calculate response time at end
             response_time = int((time.time() - start_time) * 1000)
-            logger.debug(f"Command /delquiz_confirm completed in {response_time}ms")
         
         except Exception as e:
             response_time = int((time.time() - start_time) * 1000)
