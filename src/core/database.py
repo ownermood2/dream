@@ -104,6 +104,7 @@ class DatabaseManager:
         """Create a persistent connection for reuse."""
         try:
             if self.db_type == 'postgresql':
+                assert psycopg2 is not None, "psycopg2 must be available for PostgreSQL"
                 self._conn = psycopg2.connect(self.database_url)
                 self._conn.autocommit = False
                 logger.debug("Created persistent PostgreSQL connection")
@@ -221,6 +222,7 @@ class DatabaseManager:
     def _get_cursor(self, conn):
         """Get a cursor with appropriate settings for the database type."""
         if self.db_type == 'postgresql':
+            assert psycopg2 is not None, "psycopg2 must be available for PostgreSQL"
             return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         else:
             return conn.cursor()

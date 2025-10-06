@@ -89,7 +89,7 @@ class Config:
         webhook_url = os.environ.get("WEBHOOK_URL")
         render_url = os.environ.get("RENDER_URL")
         port = int(os.environ.get("PORT", "5000"))
-        database_path = os.environ.get("DATABASE_PATH", "data/quiz_bot.db")
+        database_path = os.path.abspath(os.environ.get("DATABASE_PATH", "data/quiz_bot.db"))
         database_url = os.environ.get("DATABASE_URL")
         
         config = cls(
@@ -186,4 +186,4 @@ UNAUTHORIZED_MESSAGE = """╔═════════ 🌹 𝐎𝐧𝐥𝐲 �
 
 ╚══════════════════════════════════════════════╝"""
 
-DATABASE_PATH = os.environ.get("DATABASE_PATH", "data/quiz_bot.db")
+DATABASE_PATH = os.path.abspath(os.environ.get("DATABASE_PATH", "data/quiz_bot.db"))

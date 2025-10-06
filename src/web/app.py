@@ -16,6 +16,7 @@ quiz_manager = None
 telegram_bot = None
 event_loop = None
 loop_thread = None
+app_start_time = datetime.now()
 
 def start_background_loop(loop: asyncio.AbstractEventLoop) -> None:
     """Run event loop in background thread"""
@@ -51,7 +52,6 @@ def create_app():
                 template_folder=os.path.join(root_dir, 'templates'),
                 static_folder=os.path.join(root_dir, 'static'))
     flask_app.secret_key = session_secret
-    flask_app.start_time = datetime.now()
     
     if quiz_manager is None:
         try:
@@ -174,8 +174,13 @@ def init_bot_webhook(webhook_url: str):
         raise
 
 @app.route('/')
-def health():
+def index():
     """Simple health check endpoint for deployment platforms"""
+    return jsonify({'status': 'ok'})
+
+@app.route('/health')
+def health():
+    """Health check endpoint for monitoring services"""
     return jsonify({'status': 'ok'})
 
 @app.route('/admin')
@@ -296,8 +301,7 @@ def delete_question(question_id):
 def metrics():
     """Prometheus metrics endpoint"""
     try:
-        real_app = app._get_real_app()
-        uptime = (datetime.now() - real_app.start_time).total_seconds()
+        uptime = (datetime.now() - app_start_time).total_seconds()
         
         import psutil
         process = psutil.Process()
