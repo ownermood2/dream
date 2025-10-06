@@ -2010,40 +2010,25 @@ Ready to begin? Try /quiz now! 🚀"""
             quiz_stats = self.quiz_manager.get_quiz_stats()
             total_quiz_count = quiz_stats['total_quizzes']
             
-            # Build response based on results
-            added = stats['added']
-            duplicates = stats['rejected']['duplicates']
-            invalid = stats['rejected']['invalid_format'] + stats['rejected']['invalid_options']
+            # Build formatted Quiz Addition Report
+            added_count = stats['added']
+            duplicate_count = stats['rejected']['duplicates']
+            invalid_format = stats['rejected']['invalid_format']
+            invalid_options = stats['rejected']['invalid_options']
             
-            if added > 0:
-                # Success message
-                response = f"""✅ **Quiz Added Successfully!**
+            response = f"""╔══════════════════════════════════╗
+║ 📝 𝗤𝘂𝗶𝘇 𝗔𝗱𝗱𝗶𝘁𝗶𝗼𝗻 𝗥𝗲𝗽𝗼𝗿𝘁 ║
+╚══════════════════════════════════╝
 
-📝 Added: {added} question{'s' if added != 1 else ''}
-📚 Total Quizzes: {total_quiz_count}"""
-                
-                if duplicates > 0:
-                    response += f"\n⚠️ Skipped {duplicates} duplicate{'s' if duplicates != 1 else ''}"
-                if invalid > 0:
-                    response += f"\n❌ Rejected {invalid} invalid question{'s' if invalid != 1 else ''}"
-                    
-                response += "\n\n━━━━━━━━━━━━━━━━━━\n💡 Use /totalquiz to see all quizzes"
-            else:
-                # No questions added
-                response = f"""❌ **No Questions Added**
+✅ Successfully Added: {added_count} Questions  
+📊 Total Quizzes: {total_quiz_count}  
 
-"""
-                if duplicates > 0:
-                    response += f"⚠️ All {duplicates} question{'s' if duplicates != 1 else ''} already exist in database!\n\n"
-                if invalid > 0:
-                    response += f"❌ {invalid} question{'s' if invalid != 1 else ''} {'were' if invalid != 1 else 'was'} invalid\n\n"
-                
-                response += f"""💡 **Solutions:**
-• Add NEW questions that don't exist yet
-• Use --allow-duplicates flag to override:
-  `/addquiz --allow-duplicates question | options...`
+❌ Rejected:  
+• Duplicates: {duplicate_count}  
+• Invalid Format: {invalid_format}  
+• Invalid Options: {invalid_options}  
 
-📚 Current Total: {total_quiz_count} quizzes"""
+══════════════════════════════════"""
 
             await update.message.reply_text(response)
             response_time = int((time.time() - start_time) * 1000)
