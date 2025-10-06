@@ -63,7 +63,7 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
 -   **Production-Ready Deployment**: Supports both webhook and polling modes.
 -   **No Import-Time Side Effects**: Lazy initialization prevents gunicorn crashes.
 -   **Dual-Mode Architecture**: Auto-detects mode based on environment variables.
--   **Docker Support**: Multi-stage Dockerfile and docker-compose for local testing.
+-   **Docker Support**: Complete Docker deployment with multi-stage Dockerfile and docker-compose.yml (bot + PostgreSQL + Redis). Production-optimized with health checks, volume persistence, and security best practices.
 -   **Advanced Broadcasts**: Versatile broadcast system.
 -   **Automated Scheduling**: Persistent quiz scheduling to active groups.
 -   **Robust Error Handling & Logging**: Comprehensive logging and error recovery.
