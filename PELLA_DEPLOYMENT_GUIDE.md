@@ -6,6 +6,8 @@
 - ✅ **Import script** ready for Pella SQLite database
 - ✅ **Production-ready bot** with Waitress WSGI server
 - ✅ **Smart database fallback** for read-only filesystems
+- ✅ **Bulletproof conflict recovery** - Zero "Conflict: terminated by other getUpdates" errors
+- ✅ **Auto-detection** - Automatically selects polling mode on Pella
 
 ---
 
@@ -31,7 +33,10 @@ OWNER_ID=8376823449
 WIFU_ID=7970305771
 ```
 
-**Important:** Don't set `DATABASE_URL` - Pella will use SQLite automatically.
+**Important Notes:**
+- ✅ Don't set `DATABASE_URL` - Pella will use SQLite automatically
+- ✅ Don't set `MODE` - Auto-detects polling mode (no webhook)
+- ✅ Don't set `HOST` - Defaults to 0.0.0.0 automatically
 
 ---
 
@@ -105,8 +110,12 @@ When you run the import script, you should see:
 ### Issue: Bot shows "0 questions loaded"
 **Solution:** Run the import script first, then restart the bot.
 
-### Issue: Bot still conflicts with Replit
-**Solution:** Make sure Replit bot is stopped (we already did this).
+### Issue: Bot shows "Conflict: terminated by other getUpdates"
+**Solution:** The new 3-tier conflict recovery system automatically handles this:
+- Cleans webhooks at startup (3 retries)
+- Detects conflicts during initialization and retries
+- Catches runtime conflicts and auto-recovers
+- No manual intervention needed!
 
 ---
 
