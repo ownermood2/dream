@@ -74,6 +74,11 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
 -   **Production-Ready Deployment**: Supports both webhook and polling modes.
 -   **No Import-Time Side Effects**: Lazy initialization prevents gunicorn crashes.
 -   **Dual-Mode Architecture**: Auto-detects mode based on environment variables.
+-   **Bulletproof Conflict Recovery**: Three-tier automatic conflict resolution system eliminates "Conflict: terminated by other getUpdates request" errors:
+    - **Startup Webhook Cleanup**: 3-retry loop with exponential backoff to delete any existing webhooks before polling. Aborts startup if cleanup fails to prevent conflicted state.
+    - **Initialization-Level Recovery**: 3-retry loop around bot initialization catches Conflict errors, triggers webhook cleanup, and retries. Aborts on non-Conflict exceptions or cleanup failures with clear logging.
+    - **Runtime Conflict Recovery**: Error handler catches Conflict errors during ongoing polling, stops updater, re-raises exception to trigger outer retry loop with webhook cleanup and automatic restart. Prevents bot from going offline due to transient conflicts.
+    - **Graceful Degradation**: All failure paths log critical errors with actionable messages and abort cleanly after max retries to prevent infinite loops or zombie processes.
 -   **Docker Support**: Complete Docker deployment with multi-stage Dockerfile and docker-compose.yml (bot + PostgreSQL + Redis). Production-optimized with health checks, volume persistence, and security best practices.
 -   **Comprehensive Test Suite**: 118 pytest tests covering database, quiz logic, rate limiting, handlers, and developer commands. 70%+ coverage with fast execution, strong assertions, and CI-ready configuration.
 -   **Advanced Broadcasts**: Versatile broadcast system.
@@ -116,4 +121,5 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
 -   **Required**: `TELEGRAM_TOKEN`, `SESSION_SECRET`.
 -   **Database**: `DATABASE_URL` (for PostgreSQL).
 -   **Deployment**: `RENDER_URL` (for Render/webhook auto-detection), or manual `MODE` (`polling`/`webhook`) and `WEBHOOK_URL`.
+-   **Server**: `HOST` (default: `0.0.0.0`), `PORT` (default: `5000`).
 -   **Optional**: `OWNER_ID`, `WIFU_ID`.
