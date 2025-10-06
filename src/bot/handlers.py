@@ -1467,106 +1467,56 @@ Need more help? We're here for you! 🌟"""
             # Check if user is developer
             is_dev = await self.is_developer(update.effective_user.id)
             
-            # Get user and bot links
+            # Get user and bot info for personalization
             user = update.effective_user
-            bot_name = context.bot.first_name or "Quiz Bot"
-            user_name_link = f"[{user.first_name or 'User'}](tg://user?id={user.id})"
-            bot_link = f"[{bot_name}](https://t.me/{context.bot.username})"
+            user_first = user.first_name or 'User'
+            user_id = user.id
+            bot_username = context.bot.username or "MissQuiz_Bot"
             
-            help_text = f"""╔══════════════════════════════════╗
-║   ✨ {bot_name} - Help Center   ║
-╚══════════════════════════════════╝
+            help_text = f"""╔════════════════════════════════════════╗
+║  ✨ 𝐌𝐈𝐒𝐒 𝐐𝐔𝐈𝐙 𓂀 𝐁𝐎𝐓 — 𝐇𝐄𝐋𝐏 𝐂𝐄𝐍𝐓𝐄𝐑  ║
+║ 👤 User: [{user_first}](tg://user?id={user_id}) ║
+║ 🤖 Bot: [𝐌𝐈𝐒𝐒 𝐐𝐔𝐈𝐙 𓂀 𝐁𝐎𝐓](https://t.me/{bot_username}) ║
+╚════════════════════════════════════════╝
 
-👋 Welcome {user_name_link}!
-Your complete command guide is here:
+👋 𝐖𝐞𝐥𝐜𝐨𝐦𝐞, {user_first}!  
+𝐇𝐞𝐫𝐞'𝐬 𝐲𝐨𝐮𝐫 𝐪𝐮𝐢𝐜𝐤 𝐜𝐨𝐦𝐦𝐚𝐧𝐝 𝐠𝐮𝐢𝐝𝐞 👇
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+➤ 𝐔𝐒𝐄𝐑 𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-**📌 BASIC COMMANDS**
-
-/start - 🚀 Start your quiz journey
-    _Begin using the bot and see welcome message_
-
-/help - 📖 Show this help menu
-    _View all available commands and how to use them_
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-**🎯 QUIZ COMMANDS**
-
-/quiz - 🎲 Get a random quiz
-    _Take a quiz immediately on any topic_
-
-/category - 📚 Browse quiz categories
-    _Explore topics: GK, Current Affairs, Science & more_
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-**📊 STATS COMMANDS**
-
-/mystats - 📈 View your performance
-    _See your score, accuracy, rank, and progress_
-
-/leaderboard - 🏆 Top quiz champions
-    _View the top 10 players and their scores_
-"""
+/start — 🚀 Begin your quiz journey  
+/help — 📖 Show help menu  
+/quiz — 🎲 Random quiz  
+/category — 📚 Browse categories  
+/mystats — 📈 Your stats  
+/leaderboard — 🏆 Top players  
+/totalquiz — 🔢 Total quizzes  
+━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
             # Add developer commands only for developers
             if is_dev:
                 help_text += """
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-**🔐 DEVELOPER COMMANDS**
+➤ 𝐃𝐄𝐕𝐄𝐋𝐎𝐏𝐄𝐑 𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒
 
-/dev - 👑 Manage developer access
-    _Add or remove developer privileges_
-    _💡 Reply to any message with /dev for diagnostics_
-
-/stats - 📊 Bot analytics dashboard
-    _Real-time stats, performance, and activity_
-
-/status - 🤖 Bot health & system info
-    _Uptime, memory, database, and scheduler status_
-
-/broadcast - 📣 Send announcements
-    _Broadcast messages to all users or groups_
-    _💡 Reply to a message with /broadcast to send it_
-
-/addquiz - ➕ Add new questions
-    _Add quiz questions to the database_
-
-/editquiz - ✏️ Edit questions
-    _Modify existing quiz questions_
-    _💡 Reply to a quiz with /editquiz to edit directly_
-
-/delquiz - 🗑️ Delete questions
-    _Remove quiz questions from database_
-    _💡 Reply to a quiz with /delquiz to delete it_
-
-/totalquiz - 🔢 Total quiz count
-    _View total number of available quizzes_
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-**🎯 REPLY-BASED SHORTCUTS**
-
-Reply to a quiz poll with:
-• /delquiz - Delete that specific quiz
-• /editquiz - Edit that specific quiz
-
-Reply to any message with:
-• /broadcast - Broadcast that message
-• /dev - Get message diagnostics
-"""
+/dev — 🔐 Manage developer access  
+/stats — 📊 Bot analytics  
+/status — 🤖 System info  
+/broadcast — 📣 Announce globally  
+/addquiz — ➕ Add quiz  
+/editquiz — ✏️ Edit quiz  
+/delquiz — 🗑️ Delete quiz  
+━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
             help_text += f"""
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-**💡 TIPS & FEATURES**
+➤ 𝐅𝐄𝐀𝐓𝐔𝐑𝐄𝐒
 
-✨ Auto quizzes every 30 mins in groups
-✨ PM mode for clean, clutter-free experience
-✨ Group mode auto-deletes old quiz messages
-✨ Real-time stats tracking & leaderboards
-✨ Multiple quiz categories to explore
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔔 Need help? Use /help anytime!
-💫 Conquer the Quiz World with {bot_link}!"""
+✨ Auto quizzes in groups  
+✨ Live leaderboard & stats  
+✨ Clean private mode  
+✨ Multi-category quizzes  
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💫 Conquer the Quiz World with  
+[✨ 𝐌𝐈𝐒𝐒 𝐐𝐔𝐈𝐙 𓂀 𝐁𝐎𝐓 ✨](https://t.me/{bot_username})"""
 
             # Send help message with markdown for clickable links
             reply_message = await context.bot.send_message(
