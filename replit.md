@@ -29,11 +29,18 @@ main.py            # Entry point
 ## Data Storage
 The system supports dual database backends with automatic detection:
 -   **PostgreSQL (Production - Recommended)**: Used when `DATABASE_URL` is set, offering persistent storage and scalability. All Telegram ID columns use `BIGINT` to support large user/group IDs.
--   **SQLite (Development/Local)**: Used by default, file-based (`data/quiz_bot.db`), suitable for local development.
+-   **SQLite (Development/Local)**: Used by default, file-based (`data/quiz_bot.db`), suitable for local development. Includes intelligent fallback system for read-only filesystems.
 
 The database schema includes tables for `questions`, `users`, `developers`, `groups`, `user_daily_activity`, `quiz_history`, `activity_logs`, `performance_metrics`, `quiz_stats`, and `broadcast_logs`.
 
 **Automatic PostgreSQL Migration**: On PostgreSQL startup, the system automatically detects and converts any INTEGER Telegram ID columns to BIGINT across all 9 tables (users.user_id, developers.user_id, user_daily_activity.user_id, quiz_history.user_id/chat_id, activity_logs.user_id/chat_id, broadcast_logs.admin_id, groups.chat_id). This prevents "integer out of range" errors for large Telegram IDs.
+
+**SQLite Fallback System**: For read-only filesystems (Pella, Render free tier, Railway, etc.), the system automatically:
+1. **Auto-creates directories**: Uses `os.makedirs()` to create the `data/` folder before connecting
+2. **Smart fallback**: If `data/quiz_bot.db` fails (read-only, permissions), automatically falls back to `/tmp/quiz_bot.db`
+3. **Data preservation**: When falling back, checks if original database exists and has data (via file size), then copies it to `/tmp/` to preserve existing quiz questions, users, and statistics
+4. **Crystal-clear logging**: Shows exactly where the database is stored (primary or fallback path) with emoji indicators (📁✅⚠️💾)
+5. **Zero data loss**: Ensures smooth operation across all hosting platforms without manual intervention
 
 **PostgreSQL-Only Storage**: Questions and all quiz data are stored exclusively in PostgreSQL database for production-grade reliability. The system uses intelligent in-memory caching for optimal performance, eliminating file I/O dependencies and ensuring data consistency.
 
@@ -89,7 +96,7 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
     - **Enhanced /totalquiz**: Shows comprehensive stats with category breakdown and quiz counts
 -   **Network Resilience**: Configured HTTPXRequest with balanced timeouts.
 -   **Single Instance Enforcement**: PID lockfile prevents multiple bot instances.
--   **Platform-Agnostic**: Compatible with Render, VPS, Replit, Railway, Heroku.
+-   **Platform-Agnostic**: Compatible with Pella, Render, VPS, Replit, Railway, Heroku, and other hosting platforms with read-only filesystems.
 -   **Health Check Compliance**: Simple GET `/` endpoint.
 
 # External Dependencies
