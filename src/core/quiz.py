@@ -1003,7 +1003,7 @@ class QuizManager:
         
         Returns:
             Dict: Statistics with keys:
-                - total_quizzes: Total number of questions
+                - total_quizzes: Total number of questions (from database)
                 - db_count: Database count (same as total for PostgreSQL-only)
                 - categories: Category breakdown {category: count}
                 - category_count: Number of unique categories
@@ -1011,12 +1011,26 @@ class QuizManager:
                 - difference: Always 0 (no dual storage)
         """
         try:
-            # Get total count from cache (already loaded from database)
-            total_count = len(self.questions)
+            # Get fresh count directly from database for accuracy
+            db_questions = self.db.get_all_questions()
+            total_count = len(db_questions)
+            
+            # Sync in-memory cache if count mismatch detected
+            if len(self.questions) != total_count:
+                logger.warning(f"Cache/DB mismatch detected! Cache: {len(self.questions)}, DB: {total_count}. Reloading cache...")
+                self.questions = []
+                for db_q in db_questions:
+                    self.questions.append({
+                        'id': db_q['id'],
+                        'question': db_q['question'],
+                        'options': db_q['options'],
+                        'correct_answer': db_q['correct_answer']
+                    })
+                logger.info(f"Cache reloaded with {len(self.questions)} questions from database")
             
             # Get category breakdown
             categories = {}
-            for question in self.questions:
+            for question in db_questions:
                 category = question.get('category', 'General')
                 categories[category] = categories.get(category, 0) + 1
             
