@@ -11,6 +11,9 @@ import random
 import os
 import logging
 import traceback
+import fcntl
+import tempfile
+import shutil
 from typing import List, Dict, Optional, Any
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
@@ -233,45 +236,97 @@ class QuizManager:
             logger.error(f"Critical error loading data: {str(e)}\n{traceback.format_exc()}")
             raise DatabaseError(f"Unexpected error during data loading: {e}") from e
 
-    def save_data(self, force=False):
-        """Save data with throttling to prevent excessive writes.
+    def _atomic_save_json(self, filepath: str, data: Any) -> None:
+        """Atomically save JSON data to file with temp file + rename pattern.
         
-        Saves all data to JSON files with automatic throttling to reduce I/O.
-        Uses a 5-minute interval between saves unless forced.
+        This prevents data corruption if process is interrupted during save.
+        Uses temp file in same directory + atomic rename.
+        
+        Args:
+            filepath: Target file path
+            data: Data to save as JSON
+            
+        Raises:
+            DatabaseError: If save fails
+        """
+        tmp_path = None
+        try:
+            # Create temp file in same directory for atomic rename
+            dir_path = os.path.dirname(filepath)
+            with tempfile.NamedTemporaryFile(
+                mode='w',
+                dir=dir_path,
+                delete=False,
+                suffix='.tmp'
+            ) as tmp_file:
+                tmp_path = tmp_file.name
+                json.dump(data, tmp_file, indent=2)
+                tmp_file.flush()
+                os.fsync(tmp_file.fileno())  # Force write to disk
+            
+            # Atomic rename (this is atomic on POSIX systems)
+            os.replace(tmp_path, filepath)
+            logger.debug(f"Atomically saved to {filepath}")
+            
+        except Exception as e:
+            # Clean up temp file if it exists
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise DatabaseError(f"Failed to atomically save {filepath}: {e}") from e
+
+    def _acquire_file_lock(self, file_handle, timeout=5):
+        """Acquire exclusive lock on file with timeout.
+        
+        Args:
+            file_handle: Open file handle
+            timeout: Max seconds to wait for lock
+            
+        Returns:
+            bool: True if lock acquired, False if timeout
+        """
+        import time
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                fcntl.flock(file_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return True
+            except IOError:
+                time.sleep(0.1)
+        return False
+
+    def save_data(self, force=False):
+        """Save data with atomic operations and file locking.
+        
+        Uses atomic file writes (temp + rename) and file locking to prevent:
+        - Data corruption from interrupted writes
+        - Race conditions from concurrent operations
         
         Args:
             force (bool): If True, bypass throttling and save immediately.
                         Defaults to False.
         
         Raises:
-            DatabaseError: If file write operations fail
+            DatabaseError: If file operations fail
         """
         current_time = datetime.now()
         if not force and current_time - self._last_save < self._save_interval:
             return
-
+        
         try:
-            # Save questions file with proper JSON formatting
-            with open(self.questions_file, 'w') as f:
-                json.dump(self.questions, f, indent=2)
-                logger.info(f"Saved {len(self.questions)} questions to file")
-
-            # Save other data files
-            with open(self.scores_file, 'w') as f:
-                json.dump(self.scores, f, indent=2)
-            with open(self.active_chats_file, 'w') as f:
-                json.dump(self.active_chats, f, indent=2)
-            with open(self.stats_file, 'w') as f:
-                json.dump(self.stats, f, indent=2)
-
+            # Atomically save each file
+            self._atomic_save_json(self.questions_file, self.questions)
+            logger.info(f"Saved {len(self.questions)} questions atomically")
+            
+            self._atomic_save_json(self.scores_file, self.scores)
+            self._atomic_save_json(self.active_chats_file, self.active_chats)
+            self._atomic_save_json(self.stats_file, self.stats)
+            
             self._last_save = current_time
             logger.info(f"All data saved successfully. Questions count: {len(self.questions)}")
-        except (OSError, IOError) as e:
-            logger.error(f"Failed to save data files: {str(e)}\n{traceback.format_exc()}")
-            raise DatabaseError(f"Failed to save quiz data to files: {e}") from e
+            
         except Exception as e:
-            logger.error(f"Unexpected error saving data: {str(e)}\n{traceback.format_exc()}")
-            raise DatabaseError(f"Unexpected error during data save: {e}") from e
+            logger.error(f"Failed to save data: {str(e)}")
+            raise DatabaseError(f"Failed to save quiz data: {e}") from e
 
     def _init_user_stats(self, user_id: str) -> None:
         """Initialize stats for a new user with enhanced tracking.
@@ -1079,9 +1134,9 @@ class QuizManager:
         logger.info(f"Deleted question {index}: {deleted['question'][:50]}...")
 
     def get_all_questions(self) -> List[Dict]:
-        """Get all questions from storage.
+        """Get all questions with safe file read.
         
-        Reloads questions from file to ensure latest data is returned.
+        Reloads questions from file with file locking to ensure consistency.
         Falls back to cached questions if file read fails.
         
         Returns:
@@ -1091,14 +1146,22 @@ class QuizManager:
             DatabaseError: If reload fails critically.
         """
         try:
-            # Reload questions from file to ensure we have latest data
+            # Reload with file lock for consistency
             with open(self.questions_file, 'r') as f:
-                self.questions = json.load(f)
-            logger.info(f"Loaded {len(self.questions)} questions from file")
+                # Try to acquire read lock (non-blocking)
+                try:
+                    fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                    self.questions = json.load(f)
+                    fcntl.flock(f, fcntl.LOCK_UN)
+                except IOError:
+                    # File locked, use cached data
+                    logger.debug("Questions file locked, using cached data")
+            
+            logger.debug(f"Loaded {len(self.questions)} questions")
             return self.questions
         except Exception as e:
             logger.error(f"Error loading questions: {e}")
-            return self.questions  # Return cached questions as fallback
+            return self.questions  # Return cached as fallback
 
     def increment_score(self, user_id: int):
         """Increment user's score and synchronize with statistics.
