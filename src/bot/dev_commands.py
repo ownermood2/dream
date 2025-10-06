@@ -2366,10 +2366,11 @@ Type: {activity_type.upper()}
         questions = self.db.get_all_questions()
         
         if not questions:
-            await update.effective_message.reply_text(
-                "📭 No quizzes found.\n\nAdd new quizzes using /addquiz command.",
-                parse_mode=ParseMode.MARKDOWN
-            )
+            if update.effective_message:
+                await update.effective_message.reply_text(
+                    "📭 No quizzes found.\n\nAdd new quizzes using /addquiz command.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
             return
         
         per_page = 10
@@ -2417,11 +2418,12 @@ Type: {activity_type.upper()}
                 reply_markup=reply_markup
             )
         else:
-            await update.effective_message.reply_text(
-                text,
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=reply_markup
-            )
+            if update.effective_message:
+                await update.effective_message.reply_text(
+                    text,
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=reply_markup
+                )
     
     async def _show_quiz_editor(self, update: Update, context: ContextTypes.DEFAULT_TYPE, quiz_id: int) -> None:
         """Show quiz editor interface with current values"""
@@ -2440,20 +2442,22 @@ Quiz ID #{quiz_id} doesn't exist.
                     parse_mode=ParseMode.MARKDOWN
                 )
             else:
-                await update.effective_message.reply_text(
-                    error_text,
-                    parse_mode=ParseMode.MARKDOWN
-                )
+                if update.effective_message:
+                    await update.effective_message.reply_text(
+                        error_text,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
             return
         
-        context.user_data[f'editing_quiz_{quiz_id}'] = {
-            'id': quiz['id'],
-            'question': quiz['question'],
-            'options': quiz['options'],
-            'correct_answer': quiz['correct_answer'],
-            'category': quiz.get('category'),
-            'original': quiz.copy()
-        }
+        if context.user_data is not None:
+            context.user_data[f'editing_quiz_{quiz_id}'] = {
+                'id': quiz['id'],
+                'question': quiz['question'],
+                'options': quiz['options'],
+                'correct_answer': quiz['correct_answer'],
+                'category': quiz.get('category'),
+                'original': quiz.copy()
+            }
         
         text = self._format_quiz_editor(quiz)
         keyboard = [
@@ -2479,11 +2483,12 @@ Quiz ID #{quiz_id} doesn't exist.
                 reply_markup=reply_markup
             )
         else:
-            await update.effective_message.reply_text(
-                text,
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=reply_markup
-            )
+            if update.effective_message:
+                await update.effective_message.reply_text(
+                    text,
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=reply_markup
+                )
     
     def _format_quiz_editor(self, quiz: dict) -> str:
         """Format quiz data for editor display"""
@@ -2524,6 +2529,9 @@ Select what to edit:"""
         
         data = query.data
         
+        if not data:
+            return
+        
         if data == "edit_quiz_cancel":
             await query.edit_message_text("✅ Quiz editing cancelled.")
             return
@@ -2538,7 +2546,8 @@ Select what to edit:"""
         
         elif data.startswith("edit_quiz_question_"):
             quiz_id = int(data.split("_")[-1])
-            context.user_data['waiting_for'] = f'quiz_question_{quiz_id}'
+            if context.user_data is not None:
+                context.user_data['waiting_for'] = f'quiz_question_{quiz_id}'
             await query.edit_message_text(
                 f"✏️ **Edit Question**\n\nPlease send the new question text:",
                 parse_mode=ParseMode.MARKDOWN
@@ -2546,7 +2555,8 @@ Select what to edit:"""
         
         elif data.startswith("edit_quiz_options_"):
             quiz_id = int(data.split("_")[-1])
-            context.user_data['waiting_for'] = f'quiz_options_{quiz_id}'
+            if context.user_data is not None:
+                context.user_data['waiting_for'] = f'quiz_options_{quiz_id}'
             await query.edit_message_text(
                 f"""📝 **Edit Options**
 
@@ -2575,20 +2585,22 @@ Example:
             else:
                 category = category.replace("_", " ")
             
-            quiz_data = context.user_data.get(f'editing_quiz_{quiz_id}')
-            if quiz_data:
-                quiz_data['category'] = category
-                await self._show_quiz_editor(update, context, quiz_id)
+            if context.user_data is not None:
+                quiz_data = context.user_data.get(f'editing_quiz_{quiz_id}')
+                if quiz_data:
+                    quiz_data['category'] = category
+                    await self._show_quiz_editor(update, context, quiz_id)
         
         elif data.startswith("edit_quiz_set_answer_"):
             parts = data.split("_")
             quiz_id = int(parts[4])
             answer_idx = int(parts[5])
             
-            quiz_data = context.user_data.get(f'editing_quiz_{quiz_id}')
-            if quiz_data:
-                quiz_data['correct_answer'] = answer_idx
-                await self._show_quiz_editor(update, context, quiz_id)
+            if context.user_data is not None:
+                quiz_data = context.user_data.get(f'editing_quiz_{quiz_id}')
+                if quiz_data:
+                    quiz_data['correct_answer'] = answer_idx
+                    await self._show_quiz_editor(update, context, quiz_id)
         
         elif data.startswith("edit_quiz_save_"):
             quiz_id = int(data.split("_")[-1])
@@ -2616,17 +2628,24 @@ Example:
         ])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.callback_query.edit_message_text(
-            "📂 **Select Category**\n\nChoose a category for this quiz:",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=reply_markup
-        )
+        if update.callback_query:
+            await update.callback_query.edit_message_text(
+                "📂 **Select Category**\n\nChoose a category for this quiz:",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup
+            )
     
     async def _show_answer_selector(self, update: Update, context: ContextTypes.DEFAULT_TYPE, quiz_id: int) -> None:
         """Show answer selection keyboard"""
+        if context.user_data is None:
+            if update.callback_query:
+                await update.callback_query.edit_message_text("❌ Quiz data not found.")
+            return
+        
         quiz_data = context.user_data.get(f'editing_quiz_{quiz_id}')
         if not quiz_data:
-            await update.callback_query.edit_message_text("❌ Quiz data not found.")
+            if update.callback_query:
+                await update.callback_query.edit_message_text("❌ Quiz data not found.")
             return
         
         keyboard = []
@@ -2641,17 +2660,24 @@ Example:
         keyboard.append([InlineKeyboardButton("🔙 Back", callback_data=f"edit_quiz_select_{quiz_id}")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.callback_query.edit_message_text(
-            "✅ **Select Correct Answer**\n\nChoose the correct option:",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=reply_markup
-        )
+        if update.callback_query:
+            await update.callback_query.edit_message_text(
+                "✅ **Select Correct Answer**\n\nChoose the correct option:",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup
+            )
     
     async def _save_quiz_changes(self, update: Update, context: ContextTypes.DEFAULT_TYPE, quiz_id: int) -> None:
         """Save changes to quiz in database"""
+        if context.user_data is None:
+            if update.callback_query:
+                await update.callback_query.edit_message_text("❌ Quiz data not found.")
+            return
+        
         quiz_data = context.user_data.get(f'editing_quiz_{quiz_id}')
         if not quiz_data:
-            await update.callback_query.edit_message_text("❌ Quiz data not found.")
+            if update.callback_query:
+                await update.callback_query.edit_message_text("❌ Quiz data not found.")
             return
         
         try:
@@ -2675,34 +2701,44 @@ Example:
                 if original.get('category') != quiz_data.get('category'):
                     changes.append('category')
                 
-                self.db.log_activity(
-                    activity_type='quiz_edited',
-                    user_id=update.effective_user.id,
-                    chat_id=update.callback_query.message.chat_id,
-                    username=update.effective_user.username or "",
-                    details={'quiz_id': quiz_id, 'changes': changes},
-                    success=True
-                )
+                if update.effective_user and update.callback_query and update.callback_query.message:
+                    chat_id = getattr(update.callback_query.message, 'chat_id', None)
+                    if chat_id:
+                        self.db.log_activity(
+                            activity_type='quiz_edited',
+                            user_id=update.effective_user.id,
+                            chat_id=chat_id,
+                            username=update.effective_user.username or "",
+                            details={'quiz_id': quiz_id, 'changes': changes},
+                            success=True
+                        )
                 
                 text = self._format_quiz_editor(quiz_data)
                 text = text.replace("Select what to edit:", f"✅ **Changes Saved Successfully!**\n\nModified: {', '.join(changes)}")
                 
-                await update.callback_query.edit_message_text(
-                    text,
-                    parse_mode=ParseMode.MARKDOWN
-                )
+                if update.callback_query:
+                    await update.callback_query.edit_message_text(
+                        text,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
                 
-                del context.user_data[f'editing_quiz_{quiz_id}']
+                if context.user_data is not None:
+                    del context.user_data[f'editing_quiz_{quiz_id}']
             else:
-                await update.callback_query.edit_message_text("❌ Failed to save changes. Quiz not found.")
+                if update.callback_query:
+                    await update.callback_query.edit_message_text("❌ Failed to save changes. Quiz not found.")
         
         except Exception as e:
             logger.error(f"Error saving quiz changes: {e}")
-            await update.callback_query.edit_message_text("❌ Error saving changes. Please try again.")
+            if update.callback_query:
+                await update.callback_query.edit_message_text("❌ Error saving changes. Please try again.")
     
     async def handle_text_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle text input for quiz editing"""
         if not update.message or not update.effective_user or not update.message.text:
+            return
+        
+        if context.user_data is None:
             return
         
         waiting_for = context.user_data.get('waiting_for')
@@ -2713,33 +2749,35 @@ Example:
         
         if waiting_for.startswith('quiz_question_'):
             quiz_id = int(waiting_for.split('_')[-1])
-            quiz_data = context.user_data.get(f'editing_quiz_{quiz_id}')
-            if quiz_data:
-                quiz_data['question'] = text
-                context.user_data.pop('waiting_for', None)
-                
-                await update.message.reply_text(
-                    f"✅ Question updated!\n\nUse /editquiz {quiz_id} to continue editing.",
-                    parse_mode=ParseMode.MARKDOWN
-                )
+            if context.user_data is not None:
+                quiz_data = context.user_data.get(f'editing_quiz_{quiz_id}')
+                if quiz_data:
+                    quiz_data['question'] = text
+                    context.user_data.pop('waiting_for', None)
+                    
+                    await update.message.reply_text(
+                        f"✅ Question updated!\n\nUse /editquiz {quiz_id} to continue editing.",
+                        parse_mode=ParseMode.MARKDOWN
+                    )
         
         elif waiting_for.startswith('quiz_options_'):
             quiz_id = int(waiting_for.split('_')[-1])
-            quiz_data = context.user_data.get(f'editing_quiz_{quiz_id}')
-            if quiz_data:
-                options = [opt.strip() for opt in text.split('|')]
-                if len(options) != 4:
+            if context.user_data is not None:
+                quiz_data = context.user_data.get(f'editing_quiz_{quiz_id}')
+                if quiz_data:
+                    options = [opt.strip() for opt in text.split('|')]
+                    if len(options) != 4:
+                        await update.message.reply_text(
+                            "❌ Invalid format. Please provide exactly 4 options separated by |",
+                            parse_mode=ParseMode.MARKDOWN
+                        )
+                        return
+                    
+                    quiz_data['options'] = options
+                    context.user_data.pop('waiting_for', None)
+                    
                     await update.message.reply_text(
-                        "❌ Invalid format. Please provide exactly 4 options separated by |",
+                        f"✅ Options updated!\n\nUse /editquiz {quiz_id} to continue editing.",
                         parse_mode=ParseMode.MARKDOWN
                     )
-                    return
-                
-                quiz_data['options'] = options
-                context.user_data.pop('waiting_for', None)
-                
-                await update.message.reply_text(
-                    f"✅ Options updated!\n\nUse /editquiz {quiz_id} to continue editing.",
-                    parse_mode=ParseMode.MARKDOWN
-                )
 
