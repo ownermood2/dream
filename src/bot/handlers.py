@@ -1489,8 +1489,6 @@ Need more help? We're here for you! 🌟"""
 /quiz — 🎲 Random quiz  
 /category — 📚 Browse categories  
 /mystats — 📈 Your stats  
-/leaderboard — 🏆 Top players  
-/totalquiz — 🔢 Total quizzes  
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
             # Add developer commands only for developers
