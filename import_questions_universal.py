@@ -26,9 +26,12 @@ import sqlite3
 
 def import_to_postgresql(database_url):
     """Import questions to PostgreSQL database"""
+    if not PSYCOPG2_AVAILABLE:
+        raise Exception("PostgreSQL support requires psycopg2-binary")
+    
     print(f"🐘 Using PostgreSQL database")
     
-    conn = psycopg2.connect(database_url)
+    conn = psycopg2.connect(database_url)  # type: ignore
     cur = conn.cursor()
     
     try:

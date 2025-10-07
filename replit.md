@@ -29,6 +29,7 @@ main.py            # Entry point
 ## Data Storage
 The system supports dual database backends with automatic detection:
 -   **PostgreSQL (Production - Recommended)**: Used when `DATABASE_URL` is set, offering persistent storage and scalability. All Telegram ID columns use `BIGINT` to support large user/group IDs.
+    - **Cloud PostgreSQL (Neon/Supabase)**: Free cloud PostgreSQL databases supported for cross-platform deployment. Set same `DATABASE_URL` on all platforms (Replit, Pella, Render, etc.) for shared data across instances.
 -   **SQLite (Development/Local)**: Used by default, file-based (`data/quiz_bot.db`), suitable for local development. Includes intelligent fallback system for read-only filesystems.
 
 The database schema includes tables for `questions`, `users`, `developers`, `groups`, `user_daily_activity`, `quiz_history`, `activity_logs`, `performance_metrics`, `quiz_stats`, and `broadcast_logs`.
