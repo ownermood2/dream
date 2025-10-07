@@ -16,7 +16,8 @@ from telegram.ext import (
     PollAnswerHandler,
     ChatMemberHandler,
     ContextTypes,
-    CallbackQueryHandler
+    CallbackQueryHandler,
+    PicklePersistence
 )
 from telegram.constants import ParseMode
 from telegram.error import Conflict
@@ -533,10 +534,14 @@ class TelegramQuizBot:
                 connection_pool_size=8
             )
             
+            # Configure persistence to save poll data across restarts
+            persistence = PicklePersistence(filepath='data/bot_persistence')
+            
             self.application = (
                 Application.builder()
                 .token(token)
                 .request(request)
+                .persistence(persistence)
                 .post_init(self._post_init_setup)
                 .build()
             )
@@ -692,11 +697,15 @@ class TelegramQuizBot:
                 connection_pool_size=8
             )
             
+            # Configure persistence to save poll data across restarts
+            persistence = PicklePersistence(filepath='data/bot_persistence')
+            
             self.application = (
                 Application.builder()
                 .token(token)
                 .updater(None)  # Disable polling/updater for webhook mode
                 .request(request)
+                .persistence(persistence)
                 .build()
             )
 

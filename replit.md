@@ -55,6 +55,7 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
 ## Bot Architecture
 -   **Command Handlers**: Structured command processing with advanced rate limiting system.
 -   **Access Control**: Role-based access for admin and developer commands.
+-   **Persistence System**: PicklePersistence enabled to save poll data (`context.bot_data`) across restarts. Ensures quiz answers are recorded even if users answer after bot restart. Persistence file: `data/bot_persistence`.
 -   **Optimized Auto-Clean System**: Smart message deletion in groups for cleaner chats with command-specific timing:
     - `/start`, `/help`, `/category`: Auto-delete command and bot reply after 60 seconds
     - `/mystats`: Auto-delete command and bot reply after 30 seconds (optimized for faster cleanup)
