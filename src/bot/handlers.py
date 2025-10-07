@@ -327,20 +327,17 @@ class TelegramQuizBot:
 
             logger.info(f"Sending quiz to chat {chat_id}. Question: {question_text[:50]}...")
 
-            # Get question ID for persistence (hidden from users with zero-width space)
+            # Get question ID for persistence
             question_id = question.get('id')
-            # Use zero-width space to hide ID from users: ​[ID: 123]​
-            explanation_text = f"​[ID: {question_id}]​" if question_id else ""
 
-            # Send the poll
+            # Send the poll (NO explanation to keep quiz ID hidden from users)
             message = await context.bot.send_poll(
                 chat_id=chat_id,
                 question=question_text,
                 options=question['options'],
                 type=Poll.QUIZ,
                 correct_option_id=question['correct_answer'],
-                is_anonymous=False,
-                explanation=explanation_text
+                is_anonymous=False
             )
 
             if message and message.poll:
@@ -357,6 +354,11 @@ class TelegramQuizBot:
                 # Store using proper poll ID key
                 context.bot_data[f"poll_{message.poll.id}"] = poll_data
                 logger.info(f"Stored quiz data: poll_id={message.poll.id}, chat_id={chat_id}")
+                
+                # Save poll_id → quiz_id mapping to database for /delquiz persistence
+                if question_id:
+                    self.db.save_poll_quiz_mapping(message.poll.id, question_id)
+                    logger.debug(f"Saved poll mapping: {message.poll.id} → quiz#{question_id}")
                 
                 # Store new quiz message ID and increment quiz count
                 # For private chats, use 0 instead of None (database expects int)
@@ -961,10 +963,8 @@ class TelegramQuizBot:
                         if question_text.startswith('/addquiz'):
                             question_text = question_text[len('/addquiz'):].strip()
                         
-                        # Get question ID for persistence (hidden from users with zero-width space)
+                        # Get question ID for persistence
                         question_id = question.get('id')
-                        # Use zero-width space to hide ID from users: ​[ID: 123]​
-                        explanation_text = f"​[ID: {question_id}]​" if question_id else ""
                         
                         message = await context.bot.send_poll(
                             chat_id=chat.id,
@@ -972,8 +972,7 @@ class TelegramQuizBot:
                             options=question['options'],
                             type=Poll.QUIZ,
                             correct_option_id=question['correct_answer'],
-                            is_anonymous=False,
-                            explanation=explanation_text
+                            is_anonymous=False
                         )
                         
                         if message and message.poll:
@@ -987,6 +986,10 @@ class TelegramQuizBot:
                                 'timestamp': datetime.now().isoformat()
                             }
                             context.bot_data[f"poll_{message.poll.id}"] = poll_data
+                            
+                            # Save poll_id → quiz_id mapping to database for /delquiz persistence
+                            if question_id:
+                                self.db.save_poll_quiz_mapping(message.poll.id, question_id)
                             
                             self.db.update_last_quiz_message(chat.id, message.message_id)
                             self.db.increment_quiz_count()
@@ -1466,10 +1469,8 @@ Need more help? We're here for you! 🌟"""
                     if question_text.startswith('/addquiz'):
                         question_text = question_text[len('/addquiz'):].strip()
                     
-                    # Get question ID for persistence (hidden from users with zero-width space)
+                    # Get question ID for persistence
                     question_id = question.get('id')
-                    # Use zero-width space to hide ID from users: ​[ID: 123]​
-                    explanation_text = f"​[ID: {question_id}]​" if question_id else ""
                     
                     message = await context.bot.send_poll(
                         chat_id=chat.id,
@@ -1477,8 +1478,7 @@ Need more help? We're here for you! 🌟"""
                         options=question['options'],
                         type=Poll.QUIZ,
                         correct_option_id=question['correct_answer'],
-                        is_anonymous=False,
-                        explanation=explanation_text
+                        is_anonymous=False
                     )
                     
                     if message and message.poll:
@@ -1492,6 +1492,10 @@ Need more help? We're here for you! 🌟"""
                             'timestamp': datetime.now().isoformat()
                         }
                         context.bot_data[f"poll_{message.poll.id}"] = poll_data
+                        
+                        # Save poll_id → quiz_id mapping to database for /delquiz persistence
+                        if question_id:
+                            self.db.save_poll_quiz_mapping(message.poll.id, question_id)
                         
                         self.db.update_last_quiz_message(chat.id, message.message_id)
                         self.db.increment_quiz_count()

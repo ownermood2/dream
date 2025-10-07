@@ -5,8 +5,8 @@ This project is a production-ready Telegram Quiz Bot application designed for in
 ## Recent Changes (Oct 7, 2025)
 - **Fixed real-time ranking sync issue**: Leaderboard cache now invalidates after every quiz attempt with thread-safe locking. Both `/mystats` and `/ranks` commands show instant rank updates. Added 5-minute auto-refresh job for cache rehydration.
 - **Fixed async event loop blocking**: Database operations in quiz answer handler now use `asyncio.to_thread()` to prevent blocking, ensuring responsive bot during concurrent quiz attempts.
-- **Fixed quiz ID visibility bug**: Quiz IDs are now hidden from users using zero-width Unicode characters. Users no longer see `[ID: 123]` when answering incorrectly, but developers can still use `/delquiz` with reply functionality.
-- **Fixed /delquiz reply functionality**: Quiz polls include hidden quiz ID in explanation field for reliable extraction when replying with /delquiz command.
+- **Fixed quiz ID visibility bug**: Quiz IDs are now completely hidden from users. Poll explanations are empty, and poll_id→quiz_id mappings are stored in database for `/delquiz` persistence across restarts.
+- **Fixed /delquiz reply functionality**: `/delquiz` now works by replying to any quiz poll using database-stored poll_id→quiz_id mappings, no visible IDs needed.
 - **Fixed PostgreSQL SQL syntax errors**: Converted all direct `cursor.execute()` calls to use `self._execute()` for proper placeholder conversion (`?` → `%s`).
 - **Fixed foreign key constraint error**: User deletion now properly removes related records from `user_daily_activity`, `quiz_history`, and `activity_logs`.
 - **Fixed bare except blocks**: Replaced all dangerous bare `except:` blocks with proper exception handling to improve error logging and prevent catching system signals.

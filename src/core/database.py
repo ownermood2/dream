@@ -344,6 +344,15 @@ class DatabaseManager:
                 )
             '''))
             
+            # Table for poll_id → quiz_id mapping (for /delquiz persistence without visible IDs)
+            cursor.execute(self._adapt_sql('''
+                CREATE TABLE IF NOT EXISTS poll_quiz_mapping (
+                    poll_id TEXT PRIMARY KEY,
+                    quiz_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            '''))
+            
             if not self._column_exists(cursor, 'groups', 'last_quiz_message_id'):
                 cursor.execute('ALTER TABLE groups ADD COLUMN last_quiz_message_id INTEGER')
                 logger.info("Added last_quiz_message_id column to groups table")
@@ -1035,6 +1044,29 @@ class DatabaseManager:
             self.is_developer,
             user_id
         )
+    
+    def save_poll_quiz_mapping(self, poll_id: str, quiz_id: int):
+        """Save poll_id → quiz_id mapping for /delquiz persistence"""
+        with self.get_connection() as conn:
+            assert conn is not None
+            cursor = self._get_cursor(conn)
+            assert cursor is not None
+            self._execute(cursor, '''
+                INSERT OR REPLACE INTO poll_quiz_mapping (poll_id, quiz_id)
+                VALUES (?, ?)
+            ''', (poll_id, quiz_id))
+    
+    def get_quiz_id_from_poll(self, poll_id: str) -> int | None:
+        """Get quiz_id from poll_id mapping"""
+        with self.get_connection() as conn:
+            assert conn is not None
+            cursor = self._get_cursor(conn)
+            assert cursor is not None
+            self._execute(cursor, '''
+                SELECT quiz_id FROM poll_quiz_mapping WHERE poll_id = ?
+            ''', (poll_id,))
+            result = cursor.fetchone()
+            return result['quiz_id'] if result else None
     
     def add_or_update_group(self, chat_id: int, chat_title: str | None = None, chat_type: str | None = None):
         """Add a new group or update existing group information.

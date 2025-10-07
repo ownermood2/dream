@@ -43,19 +43,18 @@ class DeveloperCommands:
         
         # Check if message is a poll (quiz)
         if message.poll:
-            # First check poll explanation for quiz ID (most reliable, works after bot restart)
-            if message.poll.explanation:
-                match = re.search(r'\[ID:\s*(\d+)\]', message.poll.explanation)
-                if match:
-                    quiz_id = int(match.group(1))
-                    logger.debug(f"Extracted quiz_id {quiz_id} from poll explanation")
-                    return quiz_id
+            poll_id = message.poll.id
+            
+            # First: Check database mapping (works after bot restart - PERSISTENT)
+            quiz_id = self.db.get_quiz_id_from_poll(poll_id)
+            if quiz_id:
+                logger.debug(f"Extracted quiz_id {quiz_id} from database mapping for poll {poll_id}")
+                return quiz_id
             
             # Fallback: Look up in context.bot_data (only works before bot restart)
-            poll_id = message.poll.id
             poll_data = context.bot_data.get(f"poll_{poll_id}")
             if poll_data and 'question_id' in poll_data:
-                logger.debug(f"Extracted quiz_id {poll_data['question_id']} from poll {poll_id}")
+                logger.debug(f"Extracted quiz_id {poll_data['question_id']} from context.bot_data")
                 return poll_data['question_id']
         
         # Check message text for quiz ID pattern
