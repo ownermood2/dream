@@ -54,6 +54,7 @@ class TelegramQuizBot:
         self._leaderboard_cache = None
         self._leaderboard_cache_time = None
         self._leaderboard_cache_duration = timedelta(seconds=60)
+        self._cache_lock = asyncio.Lock()  # Thread-safe cache access
         
         self.db = db_manager if db_manager else DatabaseManager()
         self.dev_commands = DeveloperCommands(self.db, quiz_manager)
@@ -104,27 +105,31 @@ class TelegramQuizBot:
         except Exception as e:
             logger.error(f"Error logging activity: {e}")
     
-    def _get_leaderboard_cached(self, limit: int = 1000, offset: int = 0):
-        """OPTIMIZATION 3: Get cached leaderboard data"""
-        current_time = datetime.now()
-        cache_valid = (self._leaderboard_cache is not None and 
-                      self._leaderboard_cache_time is not None and 
-                      current_time - self._leaderboard_cache_time < self._leaderboard_cache_duration)
-        
-        if cache_valid:
-            logger.debug("Using cached leaderboard (optimization)")
-            return self._leaderboard_cache
-        
-        leaderboard, total = self.db.get_leaderboard_realtime(limit=limit, offset=offset)
-        self._leaderboard_cache = (leaderboard, total)
-        self._leaderboard_cache_time = current_time
-        logger.debug(f"Fetched and cached leaderboard with {len(leaderboard)} users")
-        return leaderboard, total
+    async def _get_leaderboard_cached(self, limit: int = 1000, offset: int = 0):
+        """OPTIMIZATION 3: Get cached leaderboard data with thread-safe access"""
+        async with self._cache_lock:
+            current_time = datetime.now()
+            cache_valid = (self._leaderboard_cache is not None and 
+                          self._leaderboard_cache_time is not None and 
+                          current_time - self._leaderboard_cache_time < self._leaderboard_cache_duration)
+            
+            if cache_valid:
+                logger.debug("Using cached leaderboard (optimization)")
+                return self._leaderboard_cache
+            
+            # Run blocking DB call in thread to avoid blocking event loop
+            leaderboard, total = await asyncio.to_thread(
+                self.db.get_leaderboard_realtime, limit=limit, offset=offset
+            )
+            self._leaderboard_cache = (leaderboard, total)
+            self._leaderboard_cache_time = current_time
+            logger.debug(f"Fetched and cached leaderboard with {len(leaderboard)} users")
+            return leaderboard, total
     
     async def _preload_leaderboard(self):
         """OPTIMIZATION 3: Pre-load leaderboard on startup"""
         try:
-            self._get_leaderboard_cached(limit=1000, offset=0)
+            await self._get_leaderboard_cached(limit=1000, offset=0)
             logger.info("Leaderboard pre-loaded successfully")
         except Exception as e:
             logger.error(f"Error pre-loading leaderboard: {e}")
@@ -441,6 +446,20 @@ class TelegramQuizBot:
         except Exception as e:
             logger.error(f"Error cleaning up old activities: {e}")
     
+    async def refresh_rank_cache(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Auto-refresh rank cache every 5 minutes to prevent desyncs and rehydrate eagerly"""
+        try:
+            # Invalidate and immediately rehydrate cache to prevent cold hits
+            async with self._cache_lock:
+                self._leaderboard_cache = None
+                self._leaderboard_cache_time = None
+            
+            # Eagerly rehydrate cache so next user gets warm cache
+            await self._get_leaderboard_cached(limit=1000, offset=0)
+            logger.debug("Auto-refreshed and rehydrated leaderboard cache (5-min safety cycle)")
+        except Exception as e:
+            logger.error(f"Error refreshing rank cache: {e}")
+    
     async def cleanup_rate_limits(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Clean up old rate limit entries"""
         try:
@@ -660,6 +679,13 @@ class TelegramQuizBot:
                 first=60  # Start after 1 minute
             )
             
+            # Add rank cache auto-refresh job (every 5 minutes for real-time sync)
+            self.application.job_queue.run_repeating(
+                self.refresh_rank_cache,
+                interval=300,  # Every 5 minutes
+                first=120  # Start after 2 minutes
+            )
+            
             # Add performance metrics cleanup job
             self.application.job_queue.run_repeating(
                 self.cleanup_performance_metrics,
@@ -822,6 +848,13 @@ class TelegramQuizBot:
                 self.track_memory_usage,
                 interval=300,  # Every 5 minutes
                 first=60  # Start after 1 minute
+            )
+            
+            # Add rank cache auto-refresh job (every 5 minutes for real-time sync)
+            self.application.job_queue.run_repeating(
+                self.refresh_rank_cache,
+                interval=300,  # Every 5 minutes
+                first=120  # Start after 2 minutes
             )
             
             # Add performance metrics cleanup job
@@ -1151,14 +1184,18 @@ class TelegramQuizBot:
                 'timestamp': datetime.now().isoformat()
             }
 
-            # Update stats IMMEDIATELY in database (no caching)
+            # Update stats IMMEDIATELY in database (async-safe to avoid blocking event loop)
             activity_date = datetime.now().strftime('%Y-%m-%d')
-            self.db.update_user_score(answer.user.id, is_correct, activity_date)
+            await asyncio.to_thread(self.db.update_user_score, answer.user.id, is_correct, activity_date)
             logger.info(f"Updated stats in database for user {answer.user.id}: correct={is_correct}")
             
-            # CRITICAL: Invalidate stats cache immediately for real-time /stats command
-            self._stats_cache = None
-            self._stats_cache_time = None
+            # CRITICAL: Invalidate all caches immediately for real-time updates (thread-safe)
+            async with self._cache_lock:
+                self._stats_cache = None
+                self._stats_cache_time = None
+                self._leaderboard_cache = None
+                self._leaderboard_cache_time = None
+            logger.debug(f"Invalidated stats and leaderboard caches for real-time rank update")
             
             # Also record in quiz_history for tracking purposes
             if question_id and selected_answer is not None:
@@ -1947,7 +1984,7 @@ Ready to begin? Try /quiz now! 🚀"""
             loading_msg = await update.message.reply_text("🏆 Loading leaderboard...")
             
             # Get top 100 from cached leaderboard
-            result = self._get_leaderboard_cached(limit=100, offset=0)
+            result = await self._get_leaderboard_cached(limit=100, offset=0)
             if not result:
                 await loading_msg.edit_text(
                     "🏆 **Leaderboard**\n\n"
@@ -3279,7 +3316,7 @@ Ready to begin? 🚀"""
                 
             elif query.data == "quiz_leaderboard":
                 # Show leaderboard
-                result = self._get_leaderboard_cached(limit=10, offset=0)
+                result = await self._get_leaderboard_cached(limit=10, offset=0)
                 if not result:
                     await query.edit_message_text(
                         "🏆 **Leaderboard**\n\n"
@@ -3409,7 +3446,7 @@ Choose a category to explore:
             page = int(query.data.split('_')[-1])
             
             # Get top 100 from cached leaderboard
-            result = self._get_leaderboard_cached(limit=100, offset=0)
+            result = await self._get_leaderboard_cached(limit=100, offset=0)
             if not result:
                 await query.edit_message_text("❌ No leaderboard data available.")
                 return
