@@ -322,9 +322,10 @@ class TelegramQuizBot:
 
             logger.info(f"Sending quiz to chat {chat_id}. Question: {question_text[:50]}...")
 
-            # Get question ID for persistence
+            # Get question ID for persistence (hidden from users with zero-width space)
             question_id = question.get('id')
-            explanation_text = f"[ID: {question_id}]" if question_id else ""
+            # Use zero-width space to hide ID from users: ​[ID: 123]​
+            explanation_text = f"​[ID: {question_id}]​" if question_id else ""
 
             # Send the poll
             message = await context.bot.send_poll(
@@ -927,9 +928,10 @@ class TelegramQuizBot:
                         if question_text.startswith('/addquiz'):
                             question_text = question_text[len('/addquiz'):].strip()
                         
-                        # Get question ID for persistence
+                        # Get question ID for persistence (hidden from users with zero-width space)
                         question_id = question.get('id')
-                        explanation_text = f"[ID: {question_id}]" if question_id else ""
+                        # Use zero-width space to hide ID from users: ​[ID: 123]​
+                        explanation_text = f"​[ID: {question_id}]​" if question_id else ""
                         
                         message = await context.bot.send_poll(
                             chat_id=chat.id,
@@ -1427,9 +1429,10 @@ Need more help? We're here for you! 🌟"""
                     if question_text.startswith('/addquiz'):
                         question_text = question_text[len('/addquiz'):].strip()
                     
-                    # Get question ID for persistence
+                    # Get question ID for persistence (hidden from users with zero-width space)
                     question_id = question.get('id')
-                    explanation_text = f"[ID: {question_id}]" if question_id else ""
+                    # Use zero-width space to hide ID from users: ​[ID: 123]​
+                    explanation_text = f"​[ID: {question_id}]​" if question_id else ""
                     
                     message = await context.bot.send_poll(
                         chat_id=chat.id,
