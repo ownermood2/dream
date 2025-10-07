@@ -43,8 +43,16 @@ class DeveloperCommands:
         
         # Check if message is a poll (quiz)
         if message.poll:
+            # First check poll explanation for quiz ID (most reliable, works after bot restart)
+            if message.poll.explanation:
+                match = re.search(r'\[ID:\s*(\d+)\]', message.poll.explanation)
+                if match:
+                    quiz_id = int(match.group(1))
+                    logger.debug(f"Extracted quiz_id {quiz_id} from poll explanation")
+                    return quiz_id
+            
+            # Fallback: Look up in context.bot_data (only works before bot restart)
             poll_id = message.poll.id
-            # Look up in context.bot_data
             poll_data = context.bot_data.get(f"poll_{poll_id}")
             if poll_data and 'question_id' in poll_data:
                 logger.debug(f"Extracted quiz_id {poll_data['question_id']} from poll {poll_id}")

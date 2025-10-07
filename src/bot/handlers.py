@@ -328,7 +328,8 @@ class TelegramQuizBot:
                 options=question['options'],
                 type=Poll.QUIZ,
                 correct_option_id=question['correct_answer'],
-                is_anonymous=False
+                is_anonymous=False,
+                explanation=f"[ID: {question['id']}]"
             )
 
             if message and message.poll:
@@ -907,7 +908,8 @@ class TelegramQuizBot:
                             options=question['options'],
                             type=Poll.QUIZ,
                             correct_option_id=question['correct_answer'],
-                            is_anonymous=False
+                            is_anonymous=False,
+                            explanation=f"[ID: {question['id']}]"
                         )
                         
                         if message and message.poll:
@@ -1392,7 +1394,8 @@ Need more help? We're here for you! 🌟"""
                         options=question['options'],
                         type=Poll.QUIZ,
                         correct_option_id=question['correct_answer'],
-                        is_anonymous=False
+                        is_anonymous=False,
+                        explanation=f"[ID: {question['id']}]"
                     )
                     
                     if message and message.poll:
