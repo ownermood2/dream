@@ -120,12 +120,7 @@ class DeveloperCommands:
                 logger.debug(f"Skipping auto-clean for developer command response")
                 return
             
-            # Only auto-clean in groups, not in private chats
-            chat_type = command_message.chat.type if command_message else None
-            if chat_type not in ["group", "supergroup"]:
-                logger.debug(f"Skipping auto-clean for {chat_type} chat (PM mode)")
-                return
-            
+            # For unauthorized messages, auto-delete in ALL chat types (groups and PMs)
             await asyncio.sleep(delay)
             try:
                 await command_message.delete()
