@@ -1839,7 +1839,7 @@ Ready to begin? Try /quiz now! 🚀"""
         end_idx = start_idx + USERS_PER_PAGE
         page_users = leaderboard[start_idx:end_idx]
         
-        # Build leaderboard text
+        # Build leaderboard text with clean format
         leaderboard_text = f"🏆 **Top Quiz Players — Page {page + 1}/{total_pages}**\n"
         leaderboard_text += "━━━━━━━━━━━━━━━━━━━━━━\n"
         
@@ -1857,12 +1857,12 @@ Ready to begin? Try /quiz now! 🚀"""
             else:
                 user_link = first_name
             
-            # Format entry
-            leaderboard_text += f"{idx}. 🧑 {user_link}\n"
-            leaderboard_text += f"   📊 Total: {total_quizzes} | ✅ {correct} | ❌ {wrong}\n"
+            # Format entry with clean structure
+            leaderboard_text += f"{idx}. {user_link}\n"
+            leaderboard_text += f"   Total: {total_quizzes} | Correct: {correct} | Wrong: {wrong}\n\n"
         
         leaderboard_text += "━━━━━━━━━━━━━━━━━━━━━━\n"
-        leaderboard_text += "⏳ *Auto-deletes in 1 minute*"
+        leaderboard_text += "*Auto-deletes in 1 minute*"
         
         # Build navigation keyboard
         keyboard = []
