@@ -20,7 +20,7 @@ from telegram.ext import (
     PicklePersistence
 )
 from telegram.constants import ParseMode
-from telegram.error import Conflict
+from telegram.error import Conflict, BadRequest
 from src.core import config
 from src.core.database import DatabaseManager
 from src.bot.dev_commands import DeveloperCommands
@@ -3403,13 +3403,19 @@ Choose a category to explore:
             leaderboard_text, reply_markup = self._build_leaderboard_page(leaderboard, page, total_pages)
             
             # Update the message
-            await query.edit_message_text(
-                leaderboard_text,
-                reply_markup=reply_markup,
-                parse_mode=ParseMode.MARKDOWN
-            )
-            
-            logger.info(f"Showed leaderboard page {page + 1} via callback")
+            try:
+                await query.edit_message_text(
+                    leaderboard_text,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                logger.info(f"Showed leaderboard page {page + 1} via callback")
+            except BadRequest as e:
+                # Ignore "message is not modified" error (happens when clicking same button twice)
+                if "message is not modified" in str(e).lower():
+                    logger.debug(f"Leaderboard page {page + 1} already displayed (duplicate click)")
+                else:
+                    raise
             
         except Exception as e:
             logger.error(f"Error in handle_leaderboard_callback: {e}", exc_info=True)
