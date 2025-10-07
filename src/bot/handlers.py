@@ -322,6 +322,10 @@ class TelegramQuizBot:
 
             logger.info(f"Sending quiz to chat {chat_id}. Question: {question_text[:50]}...")
 
+            # Get question ID for persistence
+            question_id = question.get('id')
+            explanation_text = f"[ID: {question_id}]" if question_id else ""
+
             # Send the poll
             message = await context.bot.send_poll(
                 chat_id=chat_id,
@@ -330,12 +334,10 @@ class TelegramQuizBot:
                 type=Poll.QUIZ,
                 correct_option_id=question['correct_answer'],
                 is_anonymous=False,
-                explanation=""
+                explanation=explanation_text
             )
 
             if message and message.poll:
-                # Get question ID if available
-                question_id = question.get('id')
                 
                 poll_data = {
                     'chat_id': chat_id,
@@ -925,6 +927,10 @@ class TelegramQuizBot:
                         if question_text.startswith('/addquiz'):
                             question_text = question_text[len('/addquiz'):].strip()
                         
+                        # Get question ID for persistence
+                        question_id = question.get('id')
+                        explanation_text = f"[ID: {question_id}]" if question_id else ""
+                        
                         message = await context.bot.send_poll(
                             chat_id=chat.id,
                             question=question_text,
@@ -932,7 +938,7 @@ class TelegramQuizBot:
                             type=Poll.QUIZ,
                             correct_option_id=question['correct_answer'],
                             is_anonymous=False,
-                            explanation=""
+                            explanation=explanation_text
                         )
                         
                         if message and message.poll:
@@ -942,6 +948,7 @@ class TelegramQuizBot:
                                 'user_answers': {},
                                 'poll_id': message.poll.id,
                                 'question': question_text,
+                                'question_id': question_id,
                                 'timestamp': datetime.now().isoformat()
                             }
                             context.bot_data[f"poll_{message.poll.id}"] = poll_data
@@ -1420,6 +1427,10 @@ Need more help? We're here for you! 🌟"""
                     if question_text.startswith('/addquiz'):
                         question_text = question_text[len('/addquiz'):].strip()
                     
+                    # Get question ID for persistence
+                    question_id = question.get('id')
+                    explanation_text = f"[ID: {question_id}]" if question_id else ""
+                    
                     message = await context.bot.send_poll(
                         chat_id=chat.id,
                         question=question_text,
@@ -1427,7 +1438,7 @@ Need more help? We're here for you! 🌟"""
                         type=Poll.QUIZ,
                         correct_option_id=question['correct_answer'],
                         is_anonymous=False,
-                        explanation=""
+                        explanation=explanation_text
                     )
                     
                     if message and message.poll:
@@ -1437,6 +1448,7 @@ Need more help? We're here for you! 🌟"""
                             'user_answers': {},
                             'poll_id': message.poll.id,
                             'question': question_text,
+                            'question_id': question_id,
                             'timestamp': datetime.now().isoformat()
                         }
                         context.bot_data[f"poll_{message.poll.id}"] = poll_data

@@ -2,6 +2,9 @@
 
 This project is a production-ready Telegram Quiz Bot application designed for interactive quiz functionality in Telegram chats and groups. It includes a Flask web interface for administration, supports both webhook and polling deployment modes, and manages quiz questions, tracks user scores, and provides analytics. The primary goal is to deliver a robust, scalable, and user-friendly quiz experience with advanced administrative capabilities and seamless deployment across various platforms.
 
+## Recent Changes (Oct 7, 2025)
+- **Fixed /delquiz reply functionality**: Quiz polls now include quiz ID in explanation field `[ID: 123]` for reliable extraction when replying with /delquiz command. This ensures developers can delete quizzes by replying to poll messages, even after bot restarts.
+
 # User Preferences
 
 Preferred communication style: Simple, everyday language.
