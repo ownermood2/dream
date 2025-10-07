@@ -2603,6 +2603,7 @@ class DatabaseManager:
                     total_count = cursor.fetchone()['count']
                 
                 # Get the paginated leaderboard data - RANKED BY CORRECT ANSWERS
+                # Tie-breaker: lower total_quizzes = higher rank (ASC = fewer attempts ranks higher)
                 self._execute(cursor, '''
                     SELECT 
                         u.user_id,
@@ -2617,7 +2618,7 @@ class DatabaseManager:
                         u.last_activity_date
                     FROM users u
                     WHERE u.total_quizzes > 0
-                    ORDER BY u.correct_answers DESC, u.total_quizzes DESC
+                    ORDER BY u.correct_answers DESC, u.total_quizzes ASC
                     LIMIT ? OFFSET ?
                 ''', (limit, offset))
                 
@@ -2673,13 +2674,14 @@ class DatabaseManager:
                 user_correct = user_stats['correct_answers']
                 user_quizzes = user_stats['total_quizzes']
                 
+                # Count users who rank higher: more correct answers OR same correct with fewer attempts
                 self._execute(cursor, '''
                     SELECT COUNT(*) + 1 as rank
                     FROM users
                     WHERE total_quizzes > 0
                       AND (
                           correct_answers > ?
-                          OR (correct_answers = ? AND total_quizzes > ?)
+                          OR (correct_answers = ? AND total_quizzes < ?)
                       )
                 ''', (user_correct, user_correct, user_quizzes))
                 

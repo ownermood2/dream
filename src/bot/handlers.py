@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 class TelegramQuizBot:
     def __init__(self, quiz_manager, db_manager: DatabaseManager | None = None):
-        """Initialize the quiz bot with enhanced features - OPTIMIZED with caching"""
+        """Initialize the quiz bot with enhanced features - REAL-TIME MODE (no caching for stats/leaderboard)"""
         self.quiz_manager = quiz_manager
         self.application = None
         self.user_command_cooldowns = defaultdict(dict)  # {user_id: {command: timestamp}}
@@ -38,10 +38,6 @@ class TelegramQuizBot:
         self.command_history = defaultdict(lambda: deque(maxlen=10))  # Store last 10 commands per chat
         self.cleanup_interval = 3600  # 1 hour in seconds
         self.bot_start_time = datetime.now()
-        
-        self._stats_cache = None
-        self._stats_cache_time = None
-        self._stats_cache_duration = timedelta(seconds=30)
         
         self._developer_cache = {}
         self._developer_cache_time = {}
@@ -51,16 +47,11 @@ class TelegramQuizBot:
         self._user_info_cache_time = {}
         self._user_info_cache_duration = timedelta(seconds=300)
         
-        self._leaderboard_cache = None
-        self._leaderboard_cache_time = None
-        self._leaderboard_cache_duration = timedelta(seconds=5)  # 5-second cache balances real-time updates with performance
-        self._cache_lock = asyncio.Lock()  # Thread-safe cache access
-        
         self.db = db_manager if db_manager else DatabaseManager()
         self.dev_commands = DeveloperCommands(self.db, quiz_manager)
         self.rate_limiter = RateLimiter()
         
-        logger.info("TelegramQuizBot initialized with performance optimizations: user cache, leaderboard cache, rate limiting")
+        logger.info("TelegramQuizBot initialized - REAL-TIME MODE: stats and leaderboard caching disabled for real-time data")
 
     def _add_or_update_user_cached(self, user_id: int, username: str | None = None, first_name: str | None = None, last_name: str | None = None):
         """OPTIMIZATION 1: Cached user info update - reduces redundant DB writes"""
@@ -105,34 +96,6 @@ class TelegramQuizBot:
         except Exception as e:
             logger.error(f"Error logging activity: {e}")
     
-    async def _get_leaderboard_cached(self, limit: int = 1000, offset: int = 0):
-        """OPTIMIZATION 3: Get cached leaderboard data with thread-safe access"""
-        async with self._cache_lock:
-            current_time = datetime.now()
-            cache_valid = (self._leaderboard_cache is not None and 
-                          self._leaderboard_cache_time is not None and 
-                          current_time - self._leaderboard_cache_time < self._leaderboard_cache_duration)
-            
-            if cache_valid:
-                logger.debug("Using cached leaderboard (optimization)")
-                return self._leaderboard_cache
-            
-            # Run blocking DB call in thread to avoid blocking event loop
-            leaderboard, total = await asyncio.to_thread(
-                self.db.get_leaderboard_realtime, limit=limit, offset=offset
-            )
-            self._leaderboard_cache = (leaderboard, total)
-            self._leaderboard_cache_time = current_time
-            logger.debug(f"Fetched and cached leaderboard with {len(leaderboard)} users")
-            return leaderboard, total
-    
-    async def _preload_leaderboard(self):
-        """OPTIMIZATION 3: Pre-load leaderboard on startup"""
-        try:
-            await self._get_leaderboard_cached(limit=1000, offset=0)
-            logger.info("Leaderboard pre-loaded successfully")
-        except Exception as e:
-            logger.error(f"Error pre-loading leaderboard: {e}")
 
     def check_user_command_cooldown(self, user_id: int, command: str, chat_type: str) -> tuple[bool, int]:
         """Check if user command is on cooldown (only in groups)
@@ -449,18 +412,11 @@ class TelegramQuizBot:
             logger.error(f"Error cleaning up old activities: {e}")
     
     async def refresh_rank_cache(self, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Auto-refresh rank cache every 5 minutes to prevent desyncs and rehydrate eagerly"""
+        """REAL-TIME MODE: No-op job (caching completely disabled - all cache variables removed)"""
         try:
-            # Invalidate and immediately rehydrate cache to prevent cold hits
-            async with self._cache_lock:
-                self._leaderboard_cache = None
-                self._leaderboard_cache_time = None
-            
-            # Eagerly rehydrate cache so next user gets warm cache
-            await self._get_leaderboard_cached(limit=1000, offset=0)
-            logger.debug("Auto-refreshed and rehydrated leaderboard cache (5-min safety cycle)")
+            logger.debug("Cache refresh skipped (REAL-TIME MODE - caching completely disabled)")
         except Exception as e:
-            logger.error(f"Error refreshing rank cache: {e}")
+            logger.error(f"Error in refresh_rank_cache: {e}")
     
     async def cleanup_rate_limits(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Clean up old rate limit entries"""
@@ -508,11 +464,8 @@ class TelegramQuizBot:
         logger.info("Registered all callback handlers")
             
     async def _post_init_setup(self, application: Application) -> None:
-        """Post-initialization setup: preload caches and backfill data"""
+        """Post-initialization setup: backfill data"""
         try:
-            # OPTIMIZATION 3: Pre-load leaderboard cache on startup
-            await self._preload_leaderboard()
-            
             # Backfill groups from active_chats to database
             await self.backfill_groups_startup()
             
@@ -1188,19 +1141,9 @@ class TelegramQuizBot:
             }
 
             # Update stats IMMEDIATELY in database (async-safe to avoid blocking event loop)
-            # This await ensures DB commit completes BEFORE cache invalidation
             activity_date = datetime.now().strftime('%Y-%m-%d')
             await asyncio.to_thread(self.db.update_user_score, answer.user.id, is_correct, activity_date)
             logger.info(f"✅ Updated stats in database for user {answer.user.id}: correct={is_correct}")
-            
-            # CRITICAL: Invalidate all caches immediately for real-time updates (thread-safe)
-            # The lock prevents race conditions during cache invalidation
-            async with self._cache_lock:
-                self._stats_cache = None
-                self._stats_cache_time = None
-                self._leaderboard_cache = None
-                self._leaderboard_cache_time = None
-                logger.info(f"🔄 Cache invalidated for user {answer.user.id} - forcing real-time rank update")
             
             # Also record in quiz_history for tracking purposes
             if question_id and selected_answer is not None:
@@ -1768,7 +1711,7 @@ Need more help? We're here for you! 🌟"""
 
 
     async def mystats(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Show personal statistics with premium formatted dashboard"""
+        """Show personal statistics with premium formatted dashboard - REAL-TIME MODE (no caching)"""
         if not update.message:
             return
         if not update.effective_user:
@@ -1811,6 +1754,7 @@ Need more help? We're here for you! 🌟"""
             loading_msg = await update.message.reply_text("📊 Loading your stats...")
 
             try:
+                # REAL-TIME MODE: Always fetch from database (no caching)
                 # Get user stats from database in real-time
                 stats = self.db.get_user_quiz_stats_realtime(user.id)
                 
@@ -1828,7 +1772,7 @@ Ready to begin? Try /quiz now! 🚀"""
                     await loading_msg.edit_text(welcome_text, parse_mode=ParseMode.MARKDOWN)
                     return
 
-                # Get user rank efficiently without fetching all users
+                # REAL-TIME MODE: Get user rank directly from database (no caching)
                 user_rank = self.db.get_user_rank(user.id)
                 if user_rank == 0:
                     user_rank = 'N/A'
@@ -1989,8 +1933,8 @@ Ready to begin? Try /quiz now! 🚀"""
             # Send loading message
             loading_msg = await update.message.reply_text("🏆 Loading leaderboard...")
             
-            # Get top 100 from cached leaderboard
-            result = await self._get_leaderboard_cached(limit=100, offset=0)
+            # Get top 100 from database (REAL-TIME MODE - no caching)
+            result = await asyncio.to_thread(self.db.get_leaderboard_realtime, limit=100, offset=0)
             if not result:
                 await loading_msg.edit_text(
                     "🏆 **Leaderboard**\n\n"
@@ -2760,7 +2704,7 @@ Please reply to a quiz message or use:
         logger.warning(f"Invalid quiz reply for {command} from user {update.effective_user.id}")
 
     async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Show comprehensive real-time bot statistics and monitoring dashboard - OPTIMIZED with caching"""
+        """Show comprehensive real-time bot statistics and monitoring dashboard - REAL-TIME MODE (no caching)"""
         if not update.message:
             return
         if not update.effective_user:
@@ -2782,45 +2726,35 @@ Please reply to a quiz message or use:
             
             loading_msg = await update.message.reply_text("📊 Loading dashboard...")
             
-            # OPTIMIZATION 4: Use cached stats if available and recent (cache duration increased to 30s)
-            current_time = datetime.now()
-            cache_valid = (self._stats_cache is not None and 
-                          self._stats_cache_time is not None and 
-                          current_time - self._stats_cache_time < self._stats_cache_duration)
+            # REAL-TIME MODE: Always fetch from database (no caching)
+            # This ensures every /stats call hits the database for real-time data
             
-            if cache_valid:
-                stats_data = self._stats_cache
-                logger.debug("Using cached stats data (30s cache - performance optimization)")
-            else:
-                # OPTIMIZATION 4: Use combined query to fetch all quiz stats at once (reduces 4 queries to 1)
-                combined_quiz_stats = self.db.get_all_quiz_stats_combined()
-                
-                # Fetch fresh data from database
-                all_users = self.db.get_all_users_stats()
-                pm_users = sum(1 for user in all_users if user.get('has_pm_access') == 1)
-                group_only_users = sum(1 for user in all_users if user.get('has_pm_access') == 0 or user.get('has_pm_access') is None)
-                
-                stats_data = {
-                    'total_users': len(all_users),
-                    'pm_users': pm_users,
-                    'group_only_users': group_only_users,
-                    'total_groups': len(self.db.get_all_groups()),
-                    'active_today': self.db.get_active_users_count('today'),
-                    'active_week': self.db.get_active_users_count('week'),
-                    'quiz_today': combined_quiz_stats['quiz_today'],
-                    'quiz_week': combined_quiz_stats['quiz_week'],
-                    'quiz_month': combined_quiz_stats['quiz_month'],
-                    'quiz_all': combined_quiz_stats['quiz_all'],
-                    'perf_metrics': self.db.get_performance_summary(24),
-                    'trending': self.db.get_trending_commands(7, 5),
-                    'recent_activities': self.db.get_recent_activities(10)
-                }
-                # Cache the results
-                self._stats_cache = stats_data
-                self._stats_cache_time = current_time
-                logger.debug("Stats data fetched with combined query and cached (30s)")
+            # Use combined query to fetch all quiz stats at once (reduces 4 queries to 1)
+            combined_quiz_stats = self.db.get_all_quiz_stats_combined()
             
-            # Extract data from cache with None guard
+            # Fetch fresh data from database
+            all_users = self.db.get_all_users_stats()
+            pm_users = sum(1 for user in all_users if user.get('has_pm_access') == 1)
+            group_only_users = sum(1 for user in all_users if user.get('has_pm_access') == 0 or user.get('has_pm_access') is None)
+            
+            stats_data = {
+                'total_users': len(all_users),
+                'pm_users': pm_users,
+                'group_only_users': group_only_users,
+                'total_groups': len(self.db.get_all_groups()),
+                'active_today': self.db.get_active_users_count('today'),
+                'active_week': self.db.get_active_users_count('week'),
+                'quiz_today': combined_quiz_stats['quiz_today'],
+                'quiz_week': combined_quiz_stats['quiz_week'],
+                'quiz_month': combined_quiz_stats['quiz_month'],
+                'quiz_all': combined_quiz_stats['quiz_all'],
+                'perf_metrics': self.db.get_performance_summary(24),
+                'trending': self.db.get_trending_commands(7, 5),
+                'recent_activities': self.db.get_recent_activities(10)
+            }
+            logger.debug("Stats data fetched from database (REAL-TIME MODE - no caching)")
+            
+            # Extract data from stats_data with None guard
             if not stats_data:
                 logger.error("Stats data is None")
                 return
@@ -3321,8 +3255,8 @@ Ready to begin? 🚀"""
                 logger.info(f"Showed stats from callback for user {update.effective_user.id}")
                 
             elif query.data == "quiz_leaderboard":
-                # Show leaderboard
-                result = await self._get_leaderboard_cached(limit=10, offset=0)
+                # Show leaderboard (REAL-TIME MODE - direct database call)
+                result = await asyncio.to_thread(self.db.get_leaderboard_realtime, limit=10, offset=0)
                 if not result:
                     await query.edit_message_text(
                         "🏆 **Leaderboard**\n\n"
@@ -3451,8 +3385,8 @@ Choose a category to explore:
             # Extract page number from callback data (e.g., "leaderboard_page_1")
             page = int(query.data.split('_')[-1])
             
-            # Get top 100 from cached leaderboard
-            result = await self._get_leaderboard_cached(limit=100, offset=0)
+            # Get top 100 from database (REAL-TIME MODE - no caching)
+            result = await asyncio.to_thread(self.db.get_leaderboard_realtime, limit=100, offset=0)
             if not result:
                 await query.edit_message_text("❌ No leaderboard data available.")
                 return
