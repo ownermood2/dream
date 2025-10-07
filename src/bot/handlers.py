@@ -2253,7 +2253,11 @@ Failed to display quizzes. Please try again later.
             return
         
         await update.message.reply_text(
-            "❌ This command is only available to developers.",
+            """╔═══🌸 𝐎𝐧𝐥𝐲 𝐑𝐞𝐬𝐩𝐞𝐜𝐭𝐞𝐝 𝐃𝐞𝐯𝐞𝐥𝐨𝐩𝐞𝐫 ═══════╗  
+
+👑 𝐓𝐡𝐞 𝐎𝐖𝐍𝐄𝐑 & 𝐇𝐢𝐬 𝐁𝐞𝐥𝐨𝐯𝐞𝐝 𝐎𝐖𝐍𝐄𝐑 💞🤌  
+
+╚════════════════════════════╝""",
             parse_mode=ParseMode.MARKDOWN
         )
     
