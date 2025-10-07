@@ -1834,7 +1834,7 @@ Ready to begin? Try /quiz now! 🚀"""
     
     def _build_leaderboard_page(self, leaderboard: list, page: int, total_pages: int) -> tuple:
         """Build leaderboard text and keyboard for a specific page"""
-        USERS_PER_PAGE = 5
+        USERS_PER_PAGE = 10
         start_idx = page * USERS_PER_PAGE
         end_idx = start_idx + USERS_PER_PAGE
         page_users = leaderboard[start_idx:end_idx]
@@ -1887,7 +1887,7 @@ Ready to begin? Try /quiz now! 🚀"""
         return leaderboard_text, reply_markup
     
     async def leaderboard_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Show top 10 quiz champions with pagination (5 per page)"""
+        """Show quiz champions with pagination (10 per page)"""
         if not update.message:
             return
         if not update.effective_user:
@@ -1945,8 +1945,8 @@ Ready to begin? Try /quiz now! 🚀"""
                 )
                 return
             
-            # Calculate total pages (5 users per page)
-            USERS_PER_PAGE = 5
+            # Calculate total pages (10 users per page)
+            USERS_PER_PAGE = 10
             total_pages = (len(leaderboard) + USERS_PER_PAGE - 1) // USERS_PER_PAGE
             
             # Build page 1
@@ -3384,8 +3384,8 @@ Choose a category to explore:
                 await query.edit_message_text("❌ No leaderboard data available.")
                 return
             
-            # Calculate total pages (5 users per page)
-            USERS_PER_PAGE = 5
+            # Calculate total pages (10 users per page)
+            USERS_PER_PAGE = 10
             total_pages = (len(leaderboard) + USERS_PER_PAGE - 1) // USERS_PER_PAGE
             
             # Validate page number
