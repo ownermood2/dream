@@ -2580,9 +2580,16 @@ Failed to display quizzes. Please try again later.
             return
         if not update.effective_chat:
             return
+        if not update.message.from_user:
+            return
         
         start_time = time.time()
         try:
+            # Developer-only command
+            if not await self.is_developer(update.message.from_user.id):
+                await self._handle_dev_command_unauthorized(update)
+                return
+            
             # Get comprehensive quiz statistics
             quiz_stats = self.quiz_manager.get_quiz_stats()
             total_quizzes = quiz_stats['total_quizzes']
