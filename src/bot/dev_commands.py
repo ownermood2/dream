@@ -709,7 +709,7 @@ class DeveloperCommands:
                     "• Reply to any message with /dev to see diagnostics",
                     parse_mode=ParseMode.MARKDOWN
                 )
-                await self.auto_clean_message(update.message, reply)
+                await self.auto_clean_message(update.message, reply, delay=15)
                 return
             
             # Check if first argument is a number (user ID for quick add)
