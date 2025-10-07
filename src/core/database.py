@@ -2602,8 +2602,8 @@ class DatabaseManager:
                     ''')
                     total_count = cursor.fetchone()['count']
                 
-                # Get the paginated leaderboard data - RANKED BY CORRECT ANSWERS
-                # Tie-breaker: lower total_quizzes = higher rank (ASC = fewer attempts ranks higher)
+                # Get the paginated leaderboard data - RANKED BY CURRENT SCORE (TOTAL POINTS)
+                # Tie-breaker: earliest quiz timestamp = higher rank (ASC = earlier players rank higher)
                 self._execute(cursor, '''
                     SELECT 
                         u.user_id,
@@ -2615,10 +2615,13 @@ class DatabaseManager:
                         u.correct_answers,
                         u.wrong_answers,
                         u.success_rate,
-                        u.last_activity_date
+                        u.last_activity_date,
+                        MIN(qh.answered_at) as earliest_quiz
                     FROM users u
+                    LEFT JOIN quiz_history qh ON u.user_id = qh.user_id
                     WHERE u.total_quizzes > 0
-                    ORDER BY u.correct_answers DESC, u.total_quizzes ASC
+                    GROUP BY u.user_id, u.username, u.first_name, u.last_name, u.current_score, u.total_quizzes, u.correct_answers, u.wrong_answers, u.success_rate, u.last_activity_date
+                    ORDER BY u.current_score DESC, earliest_quiz ASC
                     LIMIT ? OFFSET ?
                 ''', (limit, offset))
                 
@@ -2647,7 +2650,7 @@ class DatabaseManager:
     def get_user_rank(self, user_id: int) -> int:
         """
         Get user's rank efficiently without fetching all users
-        Ranks are based on correct_answers DESC, total_quizzes DESC (same as leaderboard)
+        Ranks are based on current_score DESC, earliest_quiz ASC (same as leaderboard)
         
         Args:
             user_id: User ID to get rank for
@@ -2661,29 +2664,36 @@ class DatabaseManager:
                 cursor = self._get_cursor(conn)
                 assert cursor is not None
                 
+                # Get user's current score and earliest quiz timestamp
                 self._execute(cursor, '''
-                    SELECT correct_answers, total_quizzes
-                    FROM users
-                    WHERE user_id = ? AND total_quizzes > 0
+                    SELECT u.current_score, MIN(qh.answered_at) as earliest_quiz
+                    FROM users u
+                    LEFT JOIN quiz_history qh ON u.user_id = qh.user_id
+                    WHERE u.user_id = ? AND u.total_quizzes > 0
+                    GROUP BY u.user_id, u.current_score
                 ''', (user_id,))
                 
                 user_stats = cursor.fetchone()
                 if not user_stats:
                     return 0
                 
-                user_correct = user_stats['correct_answers']
-                user_quizzes = user_stats['total_quizzes']
+                user_score = user_stats['current_score']
+                user_earliest = user_stats['earliest_quiz']
                 
-                # Count users who rank higher: more correct answers OR same correct with fewer attempts
+                # Count users who rank higher: higher score OR same score with earlier timestamp
                 self._execute(cursor, '''
                     SELECT COUNT(*) + 1 as rank
-                    FROM users
-                    WHERE total_quizzes > 0
-                      AND (
-                          correct_answers > ?
-                          OR (correct_answers = ? AND total_quizzes < ?)
-                      )
-                ''', (user_correct, user_correct, user_quizzes))
+                    FROM (
+                        SELECT u.user_id, u.current_score, MIN(qh.answered_at) as earliest_quiz
+                        FROM users u
+                        LEFT JOIN quiz_history qh ON u.user_id = qh.user_id
+                        WHERE u.total_quizzes > 0
+                        GROUP BY u.user_id, u.current_score
+                    ) ranked
+                    WHERE 
+                        ranked.current_score > ?
+                        OR (ranked.current_score = ? AND ranked.earliest_quiz < ?)
+                ''', (user_score, user_score, user_earliest))
                 
                 result = cursor.fetchone()
                 return result['rank'] if result else 0
