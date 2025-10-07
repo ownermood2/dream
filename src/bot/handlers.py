@@ -1833,15 +1833,15 @@ Ready to begin? Try /quiz now! 🚀"""
             await update.message.reply_text("❌ Error retrieving stats. Please try again.")
     
     def _build_leaderboard_page(self, leaderboard: list, page: int, total_pages: int) -> tuple:
-        """Build leaderboard text and keyboard for a specific page"""
+        """Build professional leaderboard page with top 100 players (10 per page)"""
         USERS_PER_PAGE = 10
         start_idx = page * USERS_PER_PAGE
         end_idx = start_idx + USERS_PER_PAGE
         page_users = leaderboard[start_idx:end_idx]
         
-        # Build leaderboard text with clean format
+        # Build clean, professional leaderboard text
         leaderboard_text = f"🏆 **Top Quiz Players — Page {page + 1}/{total_pages}**\n"
-        leaderboard_text += "━━━━━━━━━━━━━━━━━━━━━━\n"
+        leaderboard_text += "━━━━━━━━━━━━━━━━━━━━\n"
         
         for idx, player in enumerate(page_users, start=start_idx + 1):
             # Get user info
@@ -1852,35 +1852,46 @@ Ready to begin? Try /quiz now! 🚀"""
             correct = player.get('correct_answers', 0)
             wrong = total_quizzes - correct
             
-            # Create clickable user link - use username as fallback for display
+            # Create clickable username link
             if user_id:
-                # Use first_name if available and not empty/invisible, otherwise use username or "User"
                 display_name = first_name.strip() if first_name and first_name.strip() else username if username else f"User {user_id}"
-                # Create mention link - no escaping needed for tg:// protocol
                 user_link = f"[{display_name}](tg://user?id={user_id})"
             else:
-                # Fallback if no user_id (shouldn't happen)
                 user_link = first_name or username or "Unknown"
             
-            # Format entry with clean structure
-            leaderboard_text += f"{idx}. {user_link}\n"
-            leaderboard_text += f"   Total: {total_quizzes} | Correct: {correct} | Wrong: {wrong}\n\n"
+            # Format: "1. Davidoff — Total: 20 | ✅ 10 | ❌ 10"
+            leaderboard_text += f"{idx}. {user_link} — Total: {total_quizzes} | ✅ {correct} | ❌ {wrong}\n"
         
-        leaderboard_text += "━━━━━━━━━━━━━━━━━━━━━━\n"
-        leaderboard_text += "*Auto-deletes in 1 minute*"
+        leaderboard_text += "━━━━━━━━━━━━━━━━━━━━"
         
-        # Build navigation keyboard
+        # Build professional pagination keyboard: ◀️ Back | 1️⃣ 2️⃣ 3️⃣ ... 🔟 | ▶️ Next
         keyboard = []
-        nav_buttons = []
         
+        # Page number buttons (show all 10 pages)
+        page_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+        page_buttons = []
+        
+        for i in range(total_pages):
+            emoji = page_emojis[i] if i < len(page_emojis) else f"{i+1}"
+            # Current page shows as just emoji, others are clickable
+            if i == page:
+                page_buttons.append(InlineKeyboardButton(f"• {emoji} •", callback_data=f"leaderboard_page_{i}"))
+            else:
+                page_buttons.append(InlineKeyboardButton(emoji, callback_data=f"leaderboard_page_{i}"))
+        
+        # Split page buttons into rows of 5 for clean layout
+        for i in range(0, len(page_buttons), 5):
+            keyboard.append(page_buttons[i:i+5])
+        
+        # Navigation buttons: ◀️ Back and ▶️ Next
+        nav_row = []
         if page > 0:
-            nav_buttons.append(InlineKeyboardButton("⬅️ Back", callback_data=f"leaderboard_page_{page-1}"))
-        
+            nav_row.append(InlineKeyboardButton("◀️ Back", callback_data=f"leaderboard_page_{page-1}"))
         if page < total_pages - 1:
-            nav_buttons.append(InlineKeyboardButton("➡️ Next", callback_data=f"leaderboard_page_{page+1}"))
+            nav_row.append(InlineKeyboardButton("▶️ Next", callback_data=f"leaderboard_page_{page+1}"))
         
-        if nav_buttons:
-            keyboard.append(nav_buttons)
+        if nav_row:
+            keyboard.append(nav_row)
         
         reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
         
