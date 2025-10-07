@@ -2260,6 +2260,11 @@ Failed to display quizzes. Please try again later.
     async def is_developer(self, user_id: int) -> bool:
         """Check if user is a developer with caching"""
         try:
+            # First check if user is OWNER or WIFU (from environment)
+            from src.core import config
+            if user_id in config.AUTHORIZED_USERS:
+                return True
+            
             current_time = datetime.now()
             
             if user_id in self._developer_cache:
