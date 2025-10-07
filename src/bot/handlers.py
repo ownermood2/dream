@@ -1545,7 +1545,8 @@ Need more help? We're here for you! 🌟"""
 /help — 📖 Show help menu  
 /quiz — 🎲 Random quiz  
 /category — 📚 Browse categories  
-/mystats — 📈 Your stats    
+/mystats — 📈 Your stats  
+/ranks — 🏆 View leaderboard    
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
             # Add developer commands only for developers
