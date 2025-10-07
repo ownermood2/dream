@@ -1300,6 +1300,41 @@ class DatabaseManager:
             logger.error(f"Error getting latest broadcast: {e}")
             return None
     
+    def get_broadcast_by_id(self, broadcast_id: str) -> Optional[Dict]:
+        """Get a specific broadcast by ID.
+        
+        Args:
+            broadcast_id (str): Unique broadcast identifier.
+        
+        Returns:
+            Optional[Dict]: Broadcast data if found, None otherwise.
+        
+        Raises:
+            DatabaseError: If query fails.
+        """
+        try:
+            with self.get_connection() as conn:
+                assert conn is not None
+                cursor = self._get_cursor(conn)
+                assert cursor is not None
+                cursor.execute('''
+                    SELECT broadcast_id, sender_id, message_data, sent_at
+                    FROM broadcasts
+                    WHERE broadcast_id = ?
+                ''', (broadcast_id,))
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        'broadcast_id': row['broadcast_id'],
+                        'sender_id': row['sender_id'],
+                        'message_data': json.loads(row['message_data']),
+                        'sent_at': row['sent_at']
+                    }
+                return None
+        except Exception as e:
+            logger.error(f"Error getting broadcast by ID {broadcast_id}: {e}")
+            return None
+    
     def delete_broadcast(self, broadcast_id: str) -> bool:
         """Delete broadcast from database.
         

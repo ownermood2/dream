@@ -1780,10 +1780,15 @@ class DeveloperCommands:
                 await self.auto_clean_message(update.message, reply)
                 return
             
+            # Store broadcast ID in context for confirmation (prevents race condition with multiple broadcasts)
+            if context.user_data is not None:
+                context.user_data['pending_delete_broadcast_id'] = broadcast_data['broadcast_id']
+            
             # Confirm deletion
             confirm_text = (
                 "🗑️ Delete Broadcast Confirmation\n\n"
                 f"This will delete the latest broadcast from {len(broadcast_messages)} chats.\n\n"
+                f"📋 Broadcast ID: {broadcast_data['broadcast_id']}\n\n"
                 "⚠️ Note: Some deletions may fail if:\n"
                 "• Bot is not admin in groups\n"
                 "• Message is older than 48 hours\n\n"
@@ -1791,7 +1796,7 @@ class DeveloperCommands:
             )
             
             reply = await update.message.reply_text(confirm_text)
-            logger.info(f"Broadcast deletion prepared by {update.effective_user.id} for {len(broadcast_messages)} chats")
+            logger.info(f"Broadcast deletion prepared by {update.effective_user.id} for {len(broadcast_messages)} chats (ID: {broadcast_data['broadcast_id']})")
             
             # Calculate response time at end
             response_time = int((time.time() - start_time) * 1000)
@@ -1825,6 +1830,19 @@ class DeveloperCommands:
             if not update.effective_user or not update.effective_chat or not update.message:
                 return
             
+            # Get the specific broadcast ID from context (set by /delbroadcast)
+            pending_broadcast_id = None
+            if context.user_data is not None:
+                pending_broadcast_id = context.user_data.get('pending_delete_broadcast_id')
+            
+            if not pending_broadcast_id:
+                reply = await update.message.reply_text(
+                    "❌ No pending broadcast deletion found.\n\n"
+                    "Please use /delbroadcast first to select a broadcast for deletion."
+                )
+                await self.auto_clean_message(update.message, reply)
+                return
+            
             # Log command execution immediately
             self.db.log_activity(
                 activity_type='command',
@@ -1833,16 +1851,22 @@ class DeveloperCommands:
                 username=update.effective_user.username or "",
                 chat_title=getattr(update.effective_chat, 'title', None) or "",
                 command='/delbroadcast_confirm',
-                details={'action': 'confirm_deletion'},
+                details={'action': 'confirm_deletion', 'broadcast_id': pending_broadcast_id},
                 success=True
             )
             
-            # Get latest broadcast data from database
-            broadcast_data = self.db.get_latest_broadcast()
+            # Get the specific broadcast by ID (not latest, to prevent race conditions)
+            broadcast_data = self.db.get_broadcast_by_id(pending_broadcast_id)
             
             if not broadcast_data:
-                reply = await update.message.reply_text("❌ No broadcast found. Please use /delbroadcast first.")
+                reply = await update.message.reply_text(
+                    "❌ Broadcast not found or already deleted.\n\n"
+                    f"The broadcast (ID: {pending_broadcast_id}) may have been deleted already."
+                )
                 await self.auto_clean_message(update.message, reply)
+                # Clear the stored ID
+                if context.user_data is not None:
+                    context.user_data.pop('pending_delete_broadcast_id', None)
                 return
             
             broadcast_id = broadcast_data['broadcast_id']
@@ -1875,10 +1899,14 @@ class DeveloperCommands:
                 f"💡 Failed deletions occur when bot lacks permissions or message is too old."
             )
             
-            logger.info(f"Broadcast deletion by {update.effective_user.id}: {success_count} deleted, {fail_count} failed")
+            logger.info(f"Broadcast deletion by {update.effective_user.id}: {success_count} deleted, {fail_count} failed (ID: {broadcast_id})")
             
             # Clear broadcast data from database
             self.db.delete_broadcast(broadcast_id)
+            
+            # Clear the stored broadcast ID from context
+            if context.user_data is not None:
+                context.user_data.pop('pending_delete_broadcast_id', None)
             
             # Calculate response time at end
             response_time = int((time.time() - start_time) * 1000)
@@ -1897,6 +1925,9 @@ class DeveloperCommands:
                     response_time_ms=response_time
                 )
             logger.error(f"Error in delbroadcast_confirm: {e}", exc_info=True)
+            # Clear the stored broadcast ID on error too
+            if context.user_data is not None:
+                context.user_data.pop('pending_delete_broadcast_id', None)
             if update.message:
                 reply = await update.message.reply_text("❌ Error deleting broadcast")
                 await self.auto_clean_message(update.message, reply)
