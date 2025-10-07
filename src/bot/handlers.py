@@ -2930,7 +2930,8 @@ Start playing quizzes to track your progress.
                             
                             score_display = f"{entry['score']/1000:.1f}K" if entry['score'] >= 1000 else str(entry['score'])
                             leaderboard_text += f"\n\n{medals[rank-1]} {username}\n💯 {score_display} pts • 🎯 {entry['accuracy']}%"
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Could not fetch user info for leaderboard: {e}")
                             continue
                     
                     leaderboard_text += "\n\n━━━━━━━━━━━━━━━━━━━━━━━"

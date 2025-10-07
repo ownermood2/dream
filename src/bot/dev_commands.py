@@ -839,7 +839,8 @@ class DeveloperCommands:
                 try:
                     owner_user = await context.bot.get_chat(config.OWNER_ID)
                     owner_name = owner_user.first_name
-                except:
+                except Exception as e:
+                    logger.debug(f"Could not fetch owner info: {e}")
                     owner_name = "Owner"
                 
                 dev_text += f"• {owner_name} (ID: {config.OWNER_ID})\n"
@@ -851,7 +852,8 @@ class DeveloperCommands:
                         wifu_name = wifu_user.first_name
                         # Check if name has emoji, otherwise it might be the second developer
                         dev_text += f"• {wifu_name} (ID: {config.WIFU_ID})\n"
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Could not fetch WIFU info: {e}")
                         dev_text += f"• Developer (ID: {config.WIFU_ID})\n"
                 
                 # Show other developers from database
@@ -861,7 +863,8 @@ class DeveloperCommands:
                             dev_user = await context.bot.get_chat(dev['user_id'])
                             dev_name = dev_user.first_name
                             dev_text += f"• {dev_name} (ID: {dev['user_id']})\n"
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Could not fetch developer info: {e}")
                             username = dev.get('username') or dev.get('first_name') or f"User{dev['user_id']}"
                             dev_text += f"• {username} (ID: {dev['user_id']})\n"
                 

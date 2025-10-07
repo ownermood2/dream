@@ -3119,7 +3119,8 @@ class DatabaseManager:
                             'command': command_name,
                             'count': row['count']
                         })
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Could not parse trending command details: {e}")
                         continue
                 
                 logger.debug(f"Retrieved {len(trending)} trending commands for last {days} days")
