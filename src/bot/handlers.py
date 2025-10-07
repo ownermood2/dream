@@ -1945,6 +1945,9 @@ Ready to begin? Try /quiz now! 🚀"""
                 )
                 return
             
+            # Limit to top 100 users for display
+            leaderboard = leaderboard[:100]
+            
             # Calculate total pages (10 users per page)
             USERS_PER_PAGE = 10
             total_pages = (len(leaderboard) + USERS_PER_PAGE - 1) // USERS_PER_PAGE
@@ -3383,6 +3386,9 @@ Choose a category to explore:
             if not leaderboard:
                 await query.edit_message_text("❌ No leaderboard data available.")
                 return
+            
+            # Limit to top 100 users for display
+            leaderboard = leaderboard[:100]
             
             # Calculate total pages (10 users per page)
             USERS_PER_PAGE = 10
