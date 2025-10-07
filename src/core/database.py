@@ -1328,7 +1328,7 @@ class DatabaseManager:
                 assert conn is not None
                 cursor = self._get_cursor(conn)
                 assert cursor is not None
-                cursor.execute('''
+                self._execute(cursor, '''
                     SELECT broadcast_id, sender_id, message_data, sent_at
                     FROM broadcasts
                     WHERE broadcast_id = ?
@@ -1373,6 +1373,7 @@ class DatabaseManager:
         """Remove inactive user from database.
         
         Used when user has blocked the bot or deactivated their account.
+        Deletes all related records to maintain referential integrity.
         
         Args:
             user_id (int): Telegram user ID.
@@ -1388,10 +1389,17 @@ class DatabaseManager:
                 assert conn is not None
                 cursor = self._get_cursor(conn)
                 assert cursor is not None
+                
+                # Delete related records first to avoid foreign key constraint errors
+                self._execute(cursor, 'DELETE FROM user_daily_activity WHERE user_id = ?', (user_id,))
+                self._execute(cursor, 'DELETE FROM quiz_history WHERE user_id = ?', (user_id,))
+                self._execute(cursor, 'DELETE FROM activity_logs WHERE user_id = ?', (user_id,))
+                
+                # Now delete the user
                 self._execute(cursor, 'DELETE FROM users WHERE user_id = ?', (user_id,))
                 success = cursor.rowcount > 0
                 if success:
-                    logger.info(f"Removed inactive user {user_id} from database")
+                    logger.info(f"Removed inactive user {user_id} and all related records from database")
                 return success
         except Exception as e:
             logger.error(f"Error removing inactive user {user_id}: {e}")
@@ -3271,7 +3279,7 @@ class DatabaseManager:
                 assert cursor is not None
                 
                 if period == 'all':
-                    cursor.execute('''
+                    self._execute(cursor, '''
                         SELECT 
                             COUNT(*) as total_sent,
                             SUM(CASE WHEN activity_type IN ('quiz_answered', 'quiz_answer') THEN 1 ELSE 0 END) as total_answered
@@ -3291,7 +3299,7 @@ class DatabaseManager:
                     else:
                         start_timestamp = datetime(now.year, now.month, now.day, 0, 0, 0).strftime('%Y-%m-%d %H:%M:%S')
                     
-                    cursor.execute('''
+                    self._execute(cursor, '''
                         SELECT 
                             COUNT(*) as total_sent,
                             SUM(CASE WHEN activity_type IN ('quiz_answered', 'quiz_answer') THEN 1 ELSE 0 END) as total_answered
@@ -3304,7 +3312,7 @@ class DatabaseManager:
                 total_sent = row['total_sent'] if row and row['total_sent'] else 0
                 total_answered = row['total_answered'] if row and row['total_answered'] else 0
                 
-                cursor.execute('''
+                self._execute(cursor, '''
                     SELECT 
                         SUM(correct_answers) as total_correct,
                         SUM(total_quizzes) as total_attempts
