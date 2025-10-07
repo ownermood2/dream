@@ -55,7 +55,13 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
 ## Bot Architecture
 -   **Command Handlers**: Structured command processing with advanced rate limiting system.
 -   **Access Control**: Role-based access for admin and developer commands.
--   **Auto-Clean Feature**: Deletes command and reply messages in groups for cleaner chats.
+-   **Optimized Auto-Clean System**: Smart message deletion in groups for cleaner chats with command-specific timing:
+    - `/start`, `/help`, `/category`, `/mystats`: Auto-delete command and bot reply after 60 seconds
+    - `/quiz`: Delete only command message (1 second delay), keep quiz visible
+    - `/leaderboard`: Auto-delete after 3 seconds
+    - Uses async deletion (`asyncio.create_task`) for non-blocking operation
+    - Requires bot admin permissions for deletion
+    - Only active in groups, preserves all messages in private chats
 -   **Statistics Tracking**: Comprehensive user and group activity monitoring with universal PM access tracking.
 -   **Broadcast System**: Supports various broadcast types (text, media, buttons) with placeholders, live tracking, and auto-cleanup.
 -   **Auto Quiz System**: Sends automated quizzes to groups every 30 minutes. Users can manually request quizzes in PM using /quiz command.
