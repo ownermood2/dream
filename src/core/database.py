@@ -375,7 +375,7 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS broadcasts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     broadcast_id TEXT UNIQUE NOT NULL,
-                    sender_id INTEGER NOT NULL,
+                    sender_id BIGINT NOT NULL,
                     message_data TEXT NOT NULL,
                     sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -520,6 +520,7 @@ class DatabaseManager:
             ('activity_logs', 'user_id'),
             ('activity_logs', 'chat_id'),
             ('broadcast_logs', 'admin_id'),
+            ('broadcasts', 'sender_id'),
             ('groups', 'chat_id'),
         ]
         
