@@ -1832,17 +1832,6 @@ Ready to begin? Try /quiz now! 🚀"""
             logger.error(f"Error in mystats: {str(e)}\n{traceback.format_exc()}")
             await update.message.reply_text("❌ Error retrieving stats. Please try again.")
     
-    def _escape_markdown(self, text: str) -> str:
-        """Escape special characters for Markdown"""
-        if not text:
-            return "Unknown"
-        # Escape special markdown characters
-        special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-        escaped_text = text
-        for char in special_chars:
-            escaped_text = escaped_text.replace(char, f'\\{char}')
-        return escaped_text
-    
     def _build_leaderboard_page(self, leaderboard: list, page: int, total_pages: int) -> tuple:
         """Build leaderboard text and keyboard for a specific page"""
         USERS_PER_PAGE = 5
@@ -1856,19 +1845,22 @@ Ready to begin? Try /quiz now! 🚀"""
         
         for idx, player in enumerate(page_users, start=start_idx + 1):
             # Get user info
-            first_name = player.get('first_name', 'Unknown')
+            first_name = player.get('first_name', '')
+            username = player.get('username', '')
             user_id = player.get('user_id')
             total_quizzes = player.get('total_quizzes', 0)
             correct = player.get('correct_answers', 0)
             wrong = total_quizzes - correct
             
-            # Create clickable user link with escaped name
-            if user_id and first_name:
-                # Escape special characters in name for markdown
-                escaped_name = self._escape_markdown(first_name)
-                user_link = f"[{escaped_name}](tg://user?id={user_id})"
+            # Create clickable user link - use username as fallback for display
+            if user_id:
+                # Use first_name if available and not empty/invisible, otherwise use username or "User"
+                display_name = first_name.strip() if first_name and first_name.strip() else username if username else f"User {user_id}"
+                # Create mention link - no escaping needed for tg:// protocol
+                user_link = f"[{display_name}](tg://user?id={user_id})"
             else:
-                user_link = first_name or "Unknown"
+                # Fallback if no user_id (shouldn't happen)
+                user_link = first_name or username or "Unknown"
             
             # Format entry with clean structure
             leaderboard_text += f"{idx}. {user_link}\n"
