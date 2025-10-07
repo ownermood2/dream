@@ -604,6 +604,12 @@ class TelegramQuizBot:
                 pattern="^(quiz_play_again|quiz_my_stats|quiz_leaderboard|quiz_categories)$"
             ))
             
+            # Add leaderboard pagination callback handler
+            self.application.add_handler(CallbackQueryHandler(
+                self.handle_leaderboard_callback,
+                pattern="^leaderboard_page_"
+            ))
+            
             # Add edit quiz callback handler
             self.application.add_handler(CallbackQueryHandler(
                 self.dev_commands.handle_edit_quiz_callback,
@@ -765,6 +771,12 @@ class TelegramQuizBot:
             self.application.add_handler(CallbackQueryHandler(
                 self.handle_quiz_action_callback,
                 pattern="^(quiz_play_again|quiz_my_stats|quiz_leaderboard|quiz_categories)$"
+            ))
+            
+            # Add leaderboard pagination callback handler
+            self.application.add_handler(CallbackQueryHandler(
+                self.handle_leaderboard_callback,
+                pattern="^leaderboard_page_"
             ))
 
             if not self.application or not self.application.job_queue:
@@ -1817,8 +1829,57 @@ Ready to begin? Try /quiz now! 🚀"""
             logger.error(f"Error in mystats: {str(e)}\n{traceback.format_exc()}")
             await update.message.reply_text("❌ Error retrieving stats. Please try again.")
     
+    def _build_leaderboard_page(self, leaderboard: list, page: int, total_pages: int) -> tuple:
+        """Build leaderboard text and keyboard for a specific page"""
+        USERS_PER_PAGE = 5
+        start_idx = page * USERS_PER_PAGE
+        end_idx = start_idx + USERS_PER_PAGE
+        page_users = leaderboard[start_idx:end_idx]
+        
+        # Build leaderboard text
+        leaderboard_text = f"🏆 **Top Quiz Players — Page {page + 1}/{total_pages}**\n"
+        leaderboard_text += "━━━━━━━━━━━━━━━━━━━━━━\n"
+        
+        for idx, player in enumerate(page_users, start=start_idx + 1):
+            # Get user info
+            first_name = player.get('first_name', 'Unknown')
+            user_id = player.get('user_id')
+            total_quizzes = player.get('total_quizzes', 0)
+            correct = player.get('correct_answers', 0)
+            wrong = total_quizzes - correct
+            
+            # Create clickable user link
+            if user_id:
+                user_link = f"[{first_name}](tg://user?id={user_id})"
+            else:
+                user_link = first_name
+            
+            # Format entry
+            leaderboard_text += f"{idx}. 🧑 {user_link}\n"
+            leaderboard_text += f"   📊 Total: {total_quizzes} | ✅ {correct} | ❌ {wrong}\n"
+        
+        leaderboard_text += "━━━━━━━━━━━━━━━━━━━━━━\n"
+        leaderboard_text += "⏳ *Auto-deletes in 1 minute*"
+        
+        # Build navigation keyboard
+        keyboard = []
+        nav_buttons = []
+        
+        if page > 0:
+            nav_buttons.append(InlineKeyboardButton("⬅️ Back", callback_data=f"leaderboard_page_{page-1}"))
+        
+        if page < total_pages - 1:
+            nav_buttons.append(InlineKeyboardButton("➡️ Next", callback_data=f"leaderboard_page_{page+1}"))
+        
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+        
+        reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+        
+        return leaderboard_text, reply_markup
+    
     async def leaderboard_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Show top 10 quiz champions with medals, scores, and accuracy"""
+        """Show top 10 quiz champions with pagination (5 per page)"""
         if not update.message:
             return
         if not update.effective_user:
@@ -1876,50 +1937,12 @@ Ready to begin? Try /quiz now! 🚀"""
                 )
                 return
             
-            # Build leaderboard message with medals
-            medals = ["🥇", "🥈", "🥉"]
-            leaderboard_text = "🏆 **TOP QUIZ CHAMPIONS** 🏆\n"
-            leaderboard_text += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            # Calculate total pages (5 users per page)
+            USERS_PER_PAGE = 5
+            total_pages = (len(leaderboard) + USERS_PER_PAGE - 1) // USERS_PER_PAGE
             
-            for idx, player in enumerate(leaderboard, 1):
-                # Get medal or rank number
-                if idx <= 3:
-                    rank_display = medals[idx - 1]
-                else:
-                    rank_display = f"{idx}."
-                
-                # Format username (clickable link if first_name available)
-                username = player.get('username', 'Unknown')
-                first_name = player.get('first_name')
-                user_id = player.get('user_id')
-                
-                if first_name and user_id:
-                    user_display = f"[{first_name}](tg://user?id={user_id})"
-                else:
-                    user_display = username
-                
-                # Get stats
-                score = player.get('score', 0)
-                correct = player.get('correct_answers', 0)
-                total_quizzes = player.get('total_quizzes', 0)
-                accuracy = player.get('accuracy', 0.0)
-                
-                # Format entry
-                leaderboard_text += f"{rank_display} **{user_display}**\n"
-                leaderboard_text += f"    💯 Score: {score} | ✅ Correct: {correct}/{total_quizzes} | 🎯 Accuracy: {accuracy}%\n\n"
-            
-            leaderboard_text += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            leaderboard_text += f"📊 Total Players: {total_count:,}\n\n"
-            leaderboard_text += "💡 Keep playing to climb the ranks!"
-            
-            # Add inline keyboard
-            keyboard = [
-                [
-                    InlineKeyboardButton("🎯 Take Quiz", callback_data="quiz_play_again"),
-                    InlineKeyboardButton("📊 My Stats", callback_data="quiz_my_stats")
-                ]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+            # Build page 1
+            leaderboard_text, reply_markup = self._build_leaderboard_page(leaderboard, 0, total_pages)
             
             # Send leaderboard
             await loading_msg.edit_text(
@@ -1929,7 +1952,7 @@ Ready to begin? Try /quiz now! 🚀"""
             )
             
             response_time = int((time.time() - start_time) * 1000)
-            logger.info(f"Showed leaderboard to user {user.id} in {response_time}ms")
+            logger.info(f"Showed leaderboard page 1 to user {user.id} in {response_time}ms")
             
             # Log performance
             self.db.log_performance_metric(
@@ -1939,12 +1962,12 @@ Ready to begin? Try /quiz now! 🚀"""
                 unit='ms'
             )
             
-            # Auto-delete command and reply in groups after 3 seconds
+            # Auto-delete command and reply in groups after 60 seconds
             if chat.type != "private":
                 asyncio.create_task(self._delete_messages_after_delay(
                     chat_id=chat.id,
                     message_ids=[update.message.message_id, loading_msg.message_id],
-                    delay=3
+                    delay=60
                 ))
         
         except Exception as e:
@@ -3328,6 +3351,56 @@ Choose a category to explore:
             logger.error(f"Error in handle_quiz_action_callback: {e}", exc_info=True)
             if query:
                 await query.answer("❌ Error processing request. Please try again!", show_alert=True)
+    
+    async def handle_leaderboard_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle callbacks from leaderboard pagination buttons"""
+        query = update.callback_query
+        if not query or not query.data:
+            return
+        
+        await query.answer()
+        
+        try:
+            # Extract page number from callback data (e.g., "leaderboard_page_1")
+            page = int(query.data.split('_')[-1])
+            
+            # Get top 10 from cached leaderboard
+            result = self._get_leaderboard_cached(limit=10, offset=0)
+            if not result:
+                await query.edit_message_text("❌ No leaderboard data available.")
+                return
+            
+            leaderboard, total_count = result
+            
+            if not leaderboard:
+                await query.edit_message_text("❌ No leaderboard data available.")
+                return
+            
+            # Calculate total pages (5 users per page)
+            USERS_PER_PAGE = 5
+            total_pages = (len(leaderboard) + USERS_PER_PAGE - 1) // USERS_PER_PAGE
+            
+            # Validate page number
+            if page < 0 or page >= total_pages:
+                await query.answer("❌ Invalid page number", show_alert=True)
+                return
+            
+            # Build the requested page
+            leaderboard_text, reply_markup = self._build_leaderboard_page(leaderboard, page, total_pages)
+            
+            # Update the message
+            await query.edit_message_text(
+                leaderboard_text,
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.MARKDOWN
+            )
+            
+            logger.info(f"Showed leaderboard page {page + 1} via callback")
+            
+        except Exception as e:
+            logger.error(f"Error in handle_leaderboard_callback: {e}", exc_info=True)
+            if query:
+                await query.answer("❌ Error loading page. Please try again!", show_alert=True)
     
     async def _show_detailed_user_stats(self, query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Show detailed user statistics"""

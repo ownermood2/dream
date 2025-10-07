@@ -60,7 +60,7 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
     - `/start`, `/help`, `/category`: Auto-delete command and bot reply after 60 seconds
     - `/mystats`: Auto-delete command and bot reply after 30 seconds (optimized for faster cleanup)
     - `/quiz`: Delete only command message (1 second delay), keep quiz visible
-    - `/leaderboard`: Auto-delete after 3 seconds
+    - `/leaderboard`: Auto-delete after 60 seconds (allows time for page navigation)
     - Uses async deletion (`asyncio.create_task`) for non-blocking operation
     - Requires bot admin permissions for deletion
     - Only active in groups, preserves all messages in private chats
@@ -73,7 +73,7 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
     - **Fully Asynchronous /addquiz**: Non-blocking quiz import system using `asyncio.to_thread()` to offload ALL expensive operations (parsing, validation, database writes) to background thread pool. Bot remains fully responsive during large quiz imports of any size.
 -   **Reply-Based Command UX**: Developer commands support context-aware replies for intuitive workflows. Reply to quiz messages with /delquiz or /editquiz for instant actions (quiz ID embedded in poll explanation for persistence across restarts). Reply to any message with /broadcast to rebroadcast it, or /dev for contextual diagnostics.
 -   **Interactive UX Features**:
-    - **Leaderboard Command**: `/leaderboard` displays top 10 quiz champions with medals, scores, and accuracy. Auto-cleanup in groups (3-second delay). 60-second caching for performance.
+    - **Paginated Leaderboard**: `/leaderboard` displays top 10 quiz champions with smooth pagination (5 users per page). Features clickable user names (Telegram profile links), total attempts, correct/wrong breakdown, and Next/Back navigation buttons. Auto-cleanup in groups (60-second delay for navigation). Cached for performance.
     - **Post-Quiz Action Buttons**: After answering quizzes in private chats, users see 4 action buttons: Play Again, My Stats, Leaderboard, and Categories for seamless navigation.
     - **Enhanced Help with Unicode UI**: Beautiful `/help` command with Unicode box-drawing characters (╔═╗║╚╝), bold Unicode text (𝐌𝐈𝐒𝐒 𝐐𝐔𝐈𝐙 𓂀 𝐁𝐎𝐓), personalized user display, and organized sections (User/Developer Commands, Features).
     - **Premium Stats Dashboard**: Unified clean stats format across all commands (/mystats, /addquiz, callbacks) with compact box-drawing characters, bold Unicode labels (𝐁𝐎𝐓 & 𝐔𝐒𝐄𝐑 𝐒𝐓𝐀𝐓𝐒 𝐃𝐀𝐒𝐇𝐁𝐎𝐀𝐑𝐃, 𝐏𝐄𝐑𝐅𝐎𝐑𝐌𝐀𝐍𝐂𝐄 𝐒𝐓𝐀𝐓𝐒), and consistent spacing for professional presentation.
