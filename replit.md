@@ -34,7 +34,7 @@ The system supports dual database backends with automatic detection:
 
 The database schema includes tables for `questions`, `users`, `developers`, `groups`, `user_daily_activity`, `quiz_history`, `activity_logs`, `performance_metrics`, `quiz_stats`, and `broadcast_logs`.
 
-**Automatic PostgreSQL Migration**: On PostgreSQL startup, the system automatically detects and converts any INTEGER Telegram ID columns to BIGINT across all 9 tables (users.user_id, developers.user_id, user_daily_activity.user_id, quiz_history.user_id/chat_id, activity_logs.user_id/chat_id, broadcast_logs.admin_id, groups.chat_id). This prevents "integer out of range" errors for large Telegram IDs.
+**Automatic PostgreSQL Migration**: On PostgreSQL startup, the system automatically detects and converts any INTEGER Telegram ID columns to BIGINT across all 10 tables (users.user_id, developers.user_id, user_daily_activity.user_id, quiz_history.user_id/chat_id, activity_logs.user_id/chat_id, broadcast_logs.admin_id, broadcasts.sender_id, groups.chat_id). This prevents "integer out of range" errors for large Telegram IDs.
 
 **SQLite Fallback System**: For read-only filesystems (Pella, Render free tier, Railway, etc.), the system automatically:
 1. **Auto-creates directories**: Uses `os.makedirs()` to create the `data/` folder before connecting
@@ -62,7 +62,7 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
 -   **Universal PM Tracking**: All user interactions in private messages are tracked for better targeting and analytics.
 -   **Rate Limiting System**: Three-tier rate limiting (Heavy/Medium/Light commands) with sliding window algorithm, developer bypass, automatic cleanup, and violation logging. Prevents command spam while maintaining smooth UX.
 -   **Quiz Management**: Complete quiz lifecycle management including /addquiz for creation and /editquiz for interactive editing with pagination, field-by-field updates, and audit logging.
--   **Reply-Based Command UX**: Developer commands support context-aware replies for intuitive workflows. Reply to quiz messages with /delquiz or /editquiz for instant actions. Reply to any message with /broadcast to rebroadcast it, or /dev for contextual diagnostics.
+-   **Reply-Based Command UX**: Developer commands support context-aware replies for intuitive workflows. Reply to quiz messages with /delquiz or /editquiz for instant actions (quiz ID embedded in poll explanation for persistence across restarts). Reply to any message with /broadcast to rebroadcast it, or /dev for contextual diagnostics.
 -   **Interactive UX Features**:
     - **Leaderboard Command**: `/leaderboard` displays top 10 quiz champions with medals, scores, and accuracy. Auto-cleanup in groups (3-second delay). 60-second caching for performance.
     - **Post-Quiz Action Buttons**: After answering quizzes in private chats, users see 4 action buttons: Play Again, My Stats, Leaderboard, and Categories for seamless navigation.
