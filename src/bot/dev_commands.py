@@ -102,8 +102,8 @@ class DeveloperCommands:
             return
         message = await update.effective_message.reply_text(config.UNAUTHORIZED_MESSAGE)
         
-        # Clean unauthorized messages (not developer responses)
-        await self.auto_clean_message(update.effective_message, message, is_dev_response=False)
+        # Clean unauthorized messages (not developer responses) - 15 second delay
+        await self.auto_clean_message(update.effective_message, message, delay=15, is_dev_response=False)
     
     async def auto_clean_message(self, command_message, bot_reply, delay: int = 5, is_dev_response: bool = True):
         """Auto-clean command and reply messages after delay
@@ -709,7 +709,7 @@ class DeveloperCommands:
                     "• Reply to any message with /dev to see diagnostics",
                     parse_mode=ParseMode.MARKDOWN
                 )
-                await self.auto_clean_message(update.message, reply, delay=15)
+                await self.auto_clean_message(update.message, reply)
                 return
             
             # Check if first argument is a number (user ID for quick add)
