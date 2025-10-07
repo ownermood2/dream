@@ -524,6 +524,7 @@ class DatabaseManager:
         migrations = [
             ('users', 'user_id'),
             ('developers', 'user_id'),
+            ('developers', 'added_by'),
             ('user_daily_activity', 'user_id'),
             ('quiz_history', 'user_id'),
             ('quiz_history', 'chat_id'),
