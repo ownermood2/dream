@@ -554,6 +554,7 @@ class TelegramQuizBot:
             self.application.add_handler(CommandHandler("category", self.category))
             self.application.add_handler(CommandHandler("mystats", self.mystats))
             self.application.add_handler(CommandHandler("leaderboard", self.leaderboard_command))
+            self.application.add_handler(CommandHandler("le", self.leaderboard_command))
 
             # Developer commands (legacy - keeping existing)
             self.application.add_handler(CommandHandler("addquiz", self.addquiz))
@@ -723,6 +724,7 @@ class TelegramQuizBot:
             self.application.add_handler(CommandHandler("category", self.category))
             self.application.add_handler(CommandHandler("mystats", self.mystats))
             self.application.add_handler(CommandHandler("leaderboard", self.leaderboard_command))
+            self.application.add_handler(CommandHandler("le", self.leaderboard_command))
 
             # Developer commands (legacy - keeping existing)
             self.application.add_handler(CommandHandler("addquiz", self.addquiz))
