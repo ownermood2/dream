@@ -1278,6 +1278,15 @@ Need more help? We're here for you! 🌟"""
             try:
                 await self.send_quiz(update.effective_chat.id, context, chat_type=chat.type)
                 await loading_message.delete()
+                
+                # Auto-delete command message in groups (keep quiz visible)
+                if chat.type != "private":
+                    asyncio.create_task(self._delete_messages_after_delay(
+                        chat_id=chat.id,
+                        message_ids=[update.message.message_id],
+                        delay=1
+                    ))
+                
                 response_time = int((time.time() - start_time) * 1000)
                 logger.info(f"/quiz completed in {response_time}ms")
                 
