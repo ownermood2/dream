@@ -2595,6 +2595,11 @@ Please reply to a quiz message or use:
         if not update.effective_chat:
             return
         
+        # Check if user is developer
+        if not await self.is_developer(update.effective_user.id):
+            await self._handle_dev_command_unauthorized(update)
+            return
+        
         start_time = time.time()
         
         try:
