@@ -1887,7 +1887,7 @@ Ready to begin? Try /quiz now! 🚀"""
         return leaderboard_text, reply_markup
     
     async def leaderboard_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Show quiz champions with pagination (10 per page)"""
+        """Show top 100 quiz champions with pagination (10 per page)"""
         if not update.message:
             return
         if not update.effective_user:
@@ -1921,8 +1921,8 @@ Ready to begin? Try /quiz now! 🚀"""
             # Send loading message
             loading_msg = await update.message.reply_text("🏆 Loading leaderboard...")
             
-            # Get top 10 from cached leaderboard
-            result = self._get_leaderboard_cached(limit=10, offset=0)
+            # Get top 100 from cached leaderboard
+            result = self._get_leaderboard_cached(limit=100, offset=0)
             if not result:
                 await loading_msg.edit_text(
                     "🏆 **Leaderboard**\n\n"
@@ -3372,8 +3372,8 @@ Choose a category to explore:
             # Extract page number from callback data (e.g., "leaderboard_page_1")
             page = int(query.data.split('_')[-1])
             
-            # Get top 10 from cached leaderboard
-            result = self._get_leaderboard_cached(limit=10, offset=0)
+            # Get top 100 from cached leaderboard
+            result = self._get_leaderboard_cached(limit=100, offset=0)
             if not result:
                 await query.edit_message_text("❌ No leaderboard data available.")
                 return
