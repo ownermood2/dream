@@ -45,17 +45,35 @@ class DeveloperCommands:
         if message.poll:
             poll_id = message.poll.id
             
-            # First: Check database mapping (works after bot restart - PERSISTENT)
+            # First: Check database mapping (works for NEW quizzes - PERSISTENT)
             quiz_id = self.db.get_quiz_id_from_poll(poll_id)
             if quiz_id:
                 logger.debug(f"Extracted quiz_id {quiz_id} from database mapping for poll {poll_id}")
                 return quiz_id
             
-            # Fallback: Look up in context.bot_data (only works before bot restart)
+            # Second: Look up in context.bot_data (works before bot restart)
             poll_data = context.bot_data.get(f"poll_{poll_id}")
             if poll_data and 'question_id' in poll_data:
                 logger.debug(f"Extracted quiz_id {poll_data['question_id']} from context.bot_data")
                 return poll_data['question_id']
+            
+            # Third: Match poll question text to database (works for OLD quizzes!)
+            if message.poll.question:
+                poll_question = message.poll.question.strip()
+                # Remove /addquiz prefix if present
+                if poll_question.startswith('/addquiz'):
+                    poll_question = poll_question[len('/addquiz'):].strip()
+                
+                # Search for matching question in database
+                all_questions = self.db.get_all_questions()
+                for q in all_questions:
+                    db_question = q.get('question', '').strip()
+                    if db_question.startswith('/addquiz'):
+                        db_question = db_question[len('/addquiz'):].strip()
+                    
+                    if db_question == poll_question:
+                        logger.debug(f"Extracted quiz_id {q['id']} from question text match")
+                        return q['id']
         
         # Check message text for quiz ID pattern
         # Look for patterns like: [ID: 123] or Quiz #123
