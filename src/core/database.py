@@ -216,7 +216,17 @@ class DatabaseManager:
         if self.db_type == 'postgresql':
             sql = sql.replace('?', '%s')
             sql = sql.replace('INTEGER PRIMARY KEY AUTOINCREMENT', 'SERIAL PRIMARY KEY')
-            sql = sql.replace('INSERT OR REPLACE', 'INSERT')
+            # Handle INSERT OR REPLACE for PostgreSQL (convert to upsert)
+            if 'INSERT OR REPLACE INTO developers' in sql:
+                sql = sql.replace(
+                    'INSERT OR REPLACE INTO developers (user_id, username, first_name, last_name, added_by)',
+                    'INSERT INTO developers (user_id, username, first_name, last_name, added_by)'
+                ).replace(
+                    'VALUES (%s, %s, %s, %s, %s)',
+                    'VALUES (%s, %s, %s, %s, %s) ON CONFLICT (user_id) DO UPDATE SET username = EXCLUDED.username, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, added_by = EXCLUDED.added_by'
+                )
+            elif 'INSERT OR REPLACE' in sql:
+                sql = sql.replace('INSERT OR REPLACE', 'INSERT')
         return sql
     
     def _get_cursor(self, conn):
