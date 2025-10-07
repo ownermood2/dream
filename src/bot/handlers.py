@@ -53,7 +53,7 @@ class TelegramQuizBot:
         
         self._leaderboard_cache = None
         self._leaderboard_cache_time = None
-        self._leaderboard_cache_duration = timedelta(seconds=0)  # Instant updates for real-time ranks
+        self._leaderboard_cache_duration = timedelta(seconds=5)  # 5-second cache balances real-time updates with performance
         self._cache_lock = asyncio.Lock()  # Thread-safe cache access
         
         self.db = db_manager if db_manager else DatabaseManager()
@@ -1201,13 +1201,6 @@ class TelegramQuizBot:
                 self._leaderboard_cache = None
                 self._leaderboard_cache_time = None
                 logger.info(f"🔄 Cache invalidated for user {answer.user.id} - forcing real-time rank update")
-            
-            # Pre-fetch updated leaderboard to warm cache with fresh data
-            try:
-                await self._get_leaderboard_cached(limit=100, offset=0)
-                logger.info(f"✨ Leaderboard cache refreshed with latest ranks after user {answer.user.id} answered")
-            except Exception as cache_error:
-                logger.warning(f"Could not pre-fetch leaderboard after answer: {cache_error}")
             
             # Also record in quiz_history for tracking purposes
             if question_id and selected_answer is not None:
