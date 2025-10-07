@@ -1833,15 +1833,15 @@ Ready to begin? Try /quiz now! 🚀"""
             await update.message.reply_text("❌ Error retrieving stats. Please try again.")
     
     def _build_leaderboard_page(self, leaderboard: list, page: int, total_pages: int) -> tuple:
-        """Build professional leaderboard page with top 100 players (10 per page)"""
+        """Build clean leaderboard page with top 100 players (10 per page)"""
         USERS_PER_PAGE = 10
         start_idx = page * USERS_PER_PAGE
         end_idx = start_idx + USERS_PER_PAGE
         page_users = leaderboard[start_idx:end_idx]
         
-        # Build clean, professional leaderboard text
-        leaderboard_text = f"🏆 **Top Quiz Players — Page {page + 1}/{total_pages}**\n"
-        leaderboard_text += "━━━━━━━━━━━━━━━━━━━━\n"
+        # Build clean leaderboard text
+        leaderboard_text = f"**Top Quiz Players — Page {page + 1}/{total_pages}**\n"
+        leaderboard_text += "─────────────────────────────\n"
         
         for idx, player in enumerate(page_users, start=start_idx + 1):
             # Get user info
@@ -1859,36 +1859,35 @@ Ready to begin? Try /quiz now! 🚀"""
             else:
                 user_link = first_name or username or "Unknown"
             
-            # Format: "1. Davidoff — Total: 20 | ✅ 10 | ❌ 10"
-            leaderboard_text += f"{idx}. {user_link} — Total: {total_quizzes} | ✅ {correct} | ❌ {wrong}\n"
+            # Format: Name on top, stats below
+            leaderboard_text += f"{idx}. {user_link}\n"
+            leaderboard_text += f"   Total: {total_quizzes} | Correct: {correct} | Wrong: {wrong}\n\n"
         
-        leaderboard_text += "━━━━━━━━━━━━━━━━━━━━"
+        leaderboard_text += "─────────────────────────────"
         
-        # Build professional pagination keyboard: ◀️ Back | 1️⃣ 2️⃣ 3️⃣ ... 🔟 | ▶️ Next
+        # Build page navigation buttons: Back | Page 1 | Page 2 | ... | Page 10 | Next
         keyboard = []
         
         # Page number buttons (show all 10 pages)
-        page_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
         page_buttons = []
         
         for i in range(total_pages):
-            emoji = page_emojis[i] if i < len(page_emojis) else f"{i+1}"
-            # Current page shows as just emoji, others are clickable
+            # Current page shows with bullet points, others plain
             if i == page:
-                page_buttons.append(InlineKeyboardButton(f"• {emoji} •", callback_data=f"leaderboard_page_{i}"))
+                page_buttons.append(InlineKeyboardButton(f"• {i+1} •", callback_data=f"leaderboard_page_{i}"))
             else:
-                page_buttons.append(InlineKeyboardButton(emoji, callback_data=f"leaderboard_page_{i}"))
+                page_buttons.append(InlineKeyboardButton(f"Page {i+1}", callback_data=f"leaderboard_page_{i}"))
         
         # Split page buttons into rows of 5 for clean layout
         for i in range(0, len(page_buttons), 5):
             keyboard.append(page_buttons[i:i+5])
         
-        # Navigation buttons: ◀️ Back and ▶️ Next
+        # Navigation buttons: Back and Next
         nav_row = []
         if page > 0:
-            nav_row.append(InlineKeyboardButton("◀️ Back", callback_data=f"leaderboard_page_{page-1}"))
+            nav_row.append(InlineKeyboardButton("Back", callback_data=f"leaderboard_page_{page-1}"))
         if page < total_pages - 1:
-            nav_row.append(InlineKeyboardButton("▶️ Next", callback_data=f"leaderboard_page_{page+1}"))
+            nav_row.append(InlineKeyboardButton("Next", callback_data=f"leaderboard_page_{page+1}"))
         
         if nav_row:
             keyboard.append(nav_row)
