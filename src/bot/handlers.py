@@ -1782,12 +1782,12 @@ Ready to begin? Try /quiz now! 🚀"""
                     unit='ms'
                 )
                 
-                # Auto-delete command and reply in groups after 60 seconds
+                # Auto-delete command and reply in groups after 30 seconds
                 if update.message.chat.type != "private":
                     asyncio.create_task(self._delete_messages_after_delay(
                         chat_id=update.message.chat_id,
                         message_ids=[update.message.message_id, loading_msg.message_id],
-                        delay=60
+                        delay=30
                     ))
 
             except Exception as e:
@@ -1958,6 +1958,113 @@ Ready to begin? Try /quiz now! 🚀"""
                 "• Contact support if the issue persists"
             )
 
+    async def _process_quizzes_background(self, message_text: str, allow_duplicates: bool, 
+                                           message_to_edit, start_time: float, user_id: int, chat_id: int) -> None:
+        """Background task to process quiz additions without blocking the bot"""
+        try:
+            # Offload ALL expensive work to thread executor to keep event loop responsive
+            def heavy_work():
+                """All parsing, validation, and DB operations in one blocking function"""
+                questions_data = []
+                
+                # Parse lines and build questions_data
+                lines = message_text.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if not line or not '|' in line:
+                        continue
+
+                    parts = line.split("|")
+                    if len(parts) != 6:
+                        continue
+
+                    try:
+                        correct_answer = int(parts[5].strip()) - 1
+                        if not (0 <= correct_answer < 4):
+                            continue
+
+                        questions_data.append({
+                            'question': parts[0].strip(),
+                            'options': [p.strip() for p in parts[1:5]],
+                            'correct_answer': correct_answer
+                        })
+                    except (ValueError, IndexError):
+                        continue
+                
+                # If no valid questions after parsing, return error
+                if not questions_data:
+                    return None, None, 0
+                
+                # Add questions to database
+                stats = self.quiz_manager.add_questions(questions_data, allow_duplicates)
+                
+                # Get updated quiz stats
+                quiz_stats = self.quiz_manager.get_quiz_stats()
+                total_quiz_count = quiz_stats['total_quizzes']
+                
+                return stats, total_quiz_count, len(questions_data)
+            
+            # Run all heavy work in thread
+            stats, total_quiz_count, parsed_count = await asyncio.to_thread(heavy_work)
+            
+            # Check if parsing failed
+            if stats is None:
+                await message_to_edit.edit_text(
+                    "❌ Please provide questions in the correct format.\n\n"
+                    "For single question:\n"
+                    "/addquiz question | option1 | option2 | option3 | option4 | correct_number\n\n"
+                    "For multiple questions (using the | format):\n"
+                    "/addquiz question1 | option1 | option2 | option3 | option4 | correct_number\n"
+                    "/addquiz question2 | option1 | option2 | option3 | option4 | correct_number\n\n"
+                    "To allow duplicate questions:\n"
+                    "/addquiz --allow-duplicates question | options...\n\n"
+                    "Add more Quiz /addquiz !"
+                )
+                return
+            
+            # Build formatted Quiz Addition Report
+            added_count = stats['added']
+            duplicate_count = stats['rejected']['duplicates']
+            invalid_format = stats['rejected']['invalid_format']
+            invalid_options = stats['rejected']['invalid_options']
+            
+            response = f"""╔══════════════════════════════════╗
+║ 📝 𝗤𝘂𝗶𝘇 𝗔𝗱𝗱𝗶𝘁𝗶𝗼𝗻 𝗥𝗲𝗽𝗼𝗿𝘁 ║
+╚══════════════════════════════════╝
+
+✅ Successfully Added: {added_count} Questions  
+📊 Total Quizzes: {total_quiz_count}  
+
+❌ Rejected:  
+• Duplicates: {duplicate_count}  
+• Invalid Format: {invalid_format}  
+• Invalid Options: {invalid_options}  
+
+══════════════════════════════════"""
+
+            # Edit the original message with the final report
+            await message_to_edit.edit_text(response)
+            
+            response_time = int((time.time() - start_time) * 1000)
+            logger.info(f"/addquiz: Added {stats['added']} quizzes in {response_time}ms (background)")
+            
+        except Exception as e:
+            response_time = int((time.time() - start_time) * 1000)
+            self._queue_activity_log(
+                activity_type='error',
+                user_id=user_id,
+                chat_id=chat_id,
+                command='/addquiz',
+                details={'error': str(e), 'background_task': True},
+                success=False,
+                response_time_ms=response_time
+            )
+            logger.error(f"Error in addquiz background task: {e}")
+            try:
+                await message_to_edit.edit_text("❌ Error processing quizzes in background.")
+            except Exception as edit_error:
+                logger.error(f"Failed to edit error message: {edit_error}")
+
     async def addquiz(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not update.message:
             return
@@ -2010,76 +2117,24 @@ Ready to begin? Try /quiz now! 🚀"""
                 )
                 return
 
-            questions_data = []
-
-            # Split by newlines to handle multiple questions
-            lines = message_text.split('\n')
-            for line in lines:
-                line = line.strip()
-                if not line or not '|' in line:
-                    continue
-
-                parts = line.split("|")
-                if len(parts) != 6:
-                    continue
-
-                try:
-                    correct_answer = int(parts[5].strip()) - 1
-                    if not (0 <= correct_answer < 4):
-                        continue
-
-                    questions_data.append({
-                        'question': parts[0].strip(),
-                        'options': [p.strip() for p in parts[1:5]],
-                        'correct_answer': correct_answer
-                    })
-                except (ValueError, IndexError):
-                    continue
-
-            if not questions_data:
-                await update.message.reply_text(
-                    "❌ Please provide questions in the correct format.\n\n"
-                    "For single question:\n"
-                    "/addquiz question | option1 | option2 | option3 | option4 | correct_number\n\n"
-                    "For multiple questions (using the | format):\n"
-                    "/addquiz question1 | option1 | option2 | option3 | option4 | correct_number\n"
-                    "/addquiz question2 | option1 | option2 | option3 | option4 | correct_number\n\n"
-                    "To allow duplicate questions:\n"
-                    "/addquiz --allow-duplicates question | options...\n\n"
-                    "Add more Quiz /addquiz !"
+            # Send immediate response without parsing (non-blocking)
+            processing_msg = await update.message.reply_text(
+                "⏳ Processing quiz questions in background..."
+            )
+            
+            # Process quizzes in background - ALL parsing happens in the background thread
+            asyncio.create_task(
+                self._process_quizzes_background(
+                    message_text=message_text,
+                    allow_duplicates=allow_duplicates,
+                    message_to_edit=processing_msg,
+                    start_time=start_time,
+                    user_id=update.effective_user.id,
+                    chat_id=update.effective_chat.id
                 )
-                return
-
-            # Add questions and get stats
-            stats = self.quiz_manager.add_questions(questions_data, allow_duplicates=allow_duplicates)
+            )
             
-            # Get total quiz count from quiz manager
-            quiz_stats = self.quiz_manager.get_quiz_stats()
-            total_quiz_count = quiz_stats['total_quizzes']
-            
-            # Build formatted Quiz Addition Report
-            added_count = stats['added']
-            duplicate_count = stats['rejected']['duplicates']
-            invalid_format = stats['rejected']['invalid_format']
-            invalid_options = stats['rejected']['invalid_options']
-            
-            response = f"""╔══════════════════════════════════╗
-║ 📝 𝗤𝘂𝗶𝘇 𝗔𝗱𝗱𝗶𝘁𝗶𝗼𝗻 𝗥𝗲𝗽𝗼𝗿𝘁 ║
-╚══════════════════════════════════╝
-
-✅ Successfully Added: {added_count} Questions  
-📊 Total Quizzes: {total_quiz_count}  
-
-❌ Rejected:  
-• Duplicates: {duplicate_count}  
-• Invalid Format: {invalid_format}  
-• Invalid Options: {invalid_options}  
-
-══════════════════════════════════"""
-
-            await update.message.reply_text(response)
-            response_time = int((time.time() - start_time) * 1000)
-            logger.info(f"/addquiz: Added {stats['added']} quizzes in {response_time}ms")
+            logger.info("/addquiz: Started background processing (parsing will occur in thread)")
 
         except Exception as e:
             response_time = int((time.time() - start_time) * 1000)
