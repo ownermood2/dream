@@ -56,7 +56,8 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
 -   **Command Handlers**: Structured command processing with advanced rate limiting system.
 -   **Access Control**: Role-based access for admin and developer commands.
 -   **Optimized Auto-Clean System**: Smart message deletion in groups for cleaner chats with command-specific timing:
-    - `/start`, `/help`, `/category`, `/mystats`: Auto-delete command and bot reply after 60 seconds
+    - `/start`, `/help`, `/category`: Auto-delete command and bot reply after 60 seconds
+    - `/mystats`: Auto-delete command and bot reply after 30 seconds (optimized for faster cleanup)
     - `/quiz`: Delete only command message (1 second delay), keep quiz visible
     - `/leaderboard`: Auto-delete after 3 seconds
     - Uses async deletion (`asyncio.create_task`) for non-blocking operation
@@ -68,6 +69,7 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
 -   **Universal PM Tracking**: All user interactions in private messages are tracked for better targeting and analytics.
 -   **Rate Limiting System**: Three-tier rate limiting (Heavy/Medium/Light commands) with sliding window algorithm, developer bypass, automatic cleanup, and violation logging. Prevents command spam while maintaining smooth UX.
 -   **Quiz Management**: Complete quiz lifecycle management including /addquiz for creation and /editquiz for interactive editing with pagination, field-by-field updates, and audit logging.
+    - **Fully Asynchronous /addquiz**: Non-blocking quiz import system using `asyncio.to_thread()` to offload ALL expensive operations (parsing, validation, database writes) to background thread pool. Bot remains fully responsive during large quiz imports of any size.
 -   **Reply-Based Command UX**: Developer commands support context-aware replies for intuitive workflows. Reply to quiz messages with /delquiz or /editquiz for instant actions (quiz ID embedded in poll explanation for persistence across restarts). Reply to any message with /broadcast to rebroadcast it, or /dev for contextual diagnostics.
 -   **Interactive UX Features**:
     - **Leaderboard Command**: `/leaderboard` displays top 10 quiz champions with medals, scores, and accuracy. Auto-cleanup in groups (3-second delay). 60-second caching for performance.
@@ -106,6 +108,7 @@ The database schema includes tables for `questions`, `users`, `developers`, `gro
     - **Database ID-Based Operations**: All quiz operations use database IDs for reliable CRUD operations. PostgreSQL uses `RETURNING id` clause for insertions (not `cursor.lastrowid` which is SQLite-only)
     - **Transaction Safety**: Database transactions ensure atomic operations and data consistency
     - **Enhanced /totalquiz**: Shows comprehensive stats with category breakdown and quiz counts
+    - **Quiz Validation**: All 641 questions validated for correctness with automated validation script (validate_and_fix_quizzes.py)
 -   **Network Resilience**: Configured HTTPXRequest with balanced timeouts.
 -   **Single Instance Enforcement**: PID lockfile prevents multiple bot instances.
 -   **Platform-Agnostic**: Compatible with Pella, Render, VPS, Replit, Railway, Heroku, and other hosting platforms with read-only filesystems.
