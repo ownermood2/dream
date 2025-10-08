@@ -2026,6 +2026,7 @@ Ready to begin? Try /quiz now! 🚀"""
             loading_msg = await update.message.reply_text("🏆 Loading leaderboard...")
             
             # Get top 100 from database (REAL-TIME MODE - no caching)
+            logger.info(f"REAL-TIME: Fetching fresh leaderboard data from database for user {user.id}")
             result = await asyncio.to_thread(self.db.get_leaderboard_realtime, limit=100, offset=0)
             if not result:
                 await loading_msg.edit_text(
@@ -3430,6 +3431,7 @@ Ready to begin? 🚀"""
                 
             elif query.data == "quiz_leaderboard":
                 # Show leaderboard (REAL-TIME MODE - direct database call)
+                logger.info(f"REAL-TIME: Fetching fresh leaderboard from callback for user {update.effective_user.id if update.effective_user else 'unknown'}")
                 result = await asyncio.to_thread(self.db.get_leaderboard_realtime, limit=10, offset=0)
                 if not result:
                     await query.edit_message_text(
@@ -3560,6 +3562,7 @@ Choose a category to explore:
             page = int(query.data.split('_')[-1])
             
             # Get top 100 from database (REAL-TIME MODE - no caching)
+            logger.info(f"REAL-TIME: Fetching fresh leaderboard page {page+1} from database")
             result = await asyncio.to_thread(self.db.get_leaderboard_realtime, limit=100, offset=0)
             if not result:
                 await query.edit_message_text("❌ No leaderboard data available.")

@@ -2640,7 +2640,7 @@ class DatabaseManager:
                     })
                 
                 query_time = int((time.time() - start_time) * 1000)
-                logger.debug(f"Leaderboard query completed in {query_time}ms (offset={offset}, limit={limit}, total={total_count}, skip_count={skip_count})")
+                logger.info(f"REAL-TIME Leaderboard query completed in {query_time}ms (offset={offset}, limit={limit}, total={total_count}, skip_count={skip_count}) - Ordered by correct_answers DESC, total_quizzes ASC")
                 return leaderboard, total_count
         except Exception as e:
             logger.error(f"Error getting leaderboard: {e}")
