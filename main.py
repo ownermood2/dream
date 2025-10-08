@@ -120,6 +120,11 @@ def run_polling_mode(config: Config):
     
     logger.info("✅ Bot is running. Press Ctrl+C to stop.")
     
+    # Ensure application is initialized
+    if not bot.application:
+        logger.critical("❌ Bot application not initialized properly")
+        raise RuntimeError("Bot application not initialized")
+    
     # Runtime conflict recovery loop for run_polling()
     max_runtime_conflict_retry = 3
     for runtime_attempt in range(max_runtime_conflict_retry):
