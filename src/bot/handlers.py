@@ -437,7 +437,7 @@ class TelegramQuizBot:
         except Exception as e:
             logger.error(f"Error cleaning up old activities: {e}")
     
-    async def refresh_rank_cache(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def refresh_rank_cache(self, context: ContextTypes.DEFAULT_TYPE | None = None) -> None:
         """Auto-refresh leaderboard cache every 30 seconds - production-ready with retry logic"""
         if self._leaderboard_refreshing:
             logger.debug("Leaderboard refresh already in progress, skipping")
@@ -494,7 +494,7 @@ class TelegramQuizBot:
                 logger.info(f"🔄 Leaderboard cache stale ({age:.1f}s old), forcing refresh")
             
             # Refresh cache immediately
-            await self.refresh_rank_cache(None)
+            await self.refresh_rank_cache(context=None)
         
         # Return cached data (or empty list if refresh failed)
         if self._leaderboard_cache is not None:
@@ -1169,7 +1169,8 @@ class TelegramQuizBot:
                     if hasattr(chat, 'is_forum') and chat.is_forum:
                         logger.info(f"Topic closed in forum {chat_id}, scanning for open topics...")
                         # Try to find an open topic
-                        topic_ranges = [1] + list(range(2, 100)) + list(range(1000, 10000, 10))
+                        # Skip topic 1 (General) as it's often closed, start from topic 2
+                        topic_ranges = list(range(2, 100)) + list(range(1000, 10000, 10))
                         sent_message = None
                         for topic_id in topic_ranges:
                             try:
@@ -2829,10 +2830,17 @@ Failed to display quizzes. Please try again later.
                         if chat_id in FORUM_TOPIC_MAP:
                             saved_topic_id = FORUM_TOPIC_MAP[chat_id]
                             logger.info(f"Using configured topic ID {saved_topic_id} for forum chat {chat_id}")
-                        # Then check runtime saved topics
+                        # Then check runtime saved topics (skip invalid topic ID 1)
                         elif 'forum_topics' in context.bot_data and chat_id in context.bot_data['forum_topics']:
-                            saved_topic_id = context.bot_data['forum_topics'][chat_id]
-                            logger.info(f"Using saved topic ID {saved_topic_id} for forum chat {chat_id}")
+                            cached_topic = context.bot_data['forum_topics'][chat_id]
+                            # Validate: Topic 1 is often invalid in forum groups, skip it
+                            if cached_topic != 1:
+                                saved_topic_id = cached_topic
+                                logger.info(f"Using saved topic ID {saved_topic_id} for forum chat {chat_id}")
+                            else:
+                                logger.warning(f"Skipping invalid cached topic ID 1 for chat {chat_id}, will discover valid topic")
+                                # Clear invalid topic 1 from cache
+                                del context.bot_data['forum_topics'][chat_id]
                     
                     # Send automated quiz with tracking parameters
                     try:
@@ -2869,8 +2877,8 @@ Failed to display quizzes. Please try again later.
                                 try:
                                     # Telegram doesn't have a direct API to list all topics, so we try common IDs
                                     # Topic IDs in Telegram forums can be high numbers (e.g., 2134)
-                                    # Try General (1), then scan up to 10000
-                                    topic_ranges = [1] + list(range(2, 100)) + list(range(1000, 10000, 10))
+                                    # Skip topic 1 (General) as it's often closed, start from topic 2
+                                    topic_ranges = list(range(2, 100)) + list(range(1000, 10000, 10))
                                     for topic_id in topic_ranges:
                                         try:
                                             logger.debug(f"Trying to send quiz to topic {topic_id} in forum chat {chat_id}")
