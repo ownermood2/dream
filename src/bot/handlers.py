@@ -2697,32 +2697,39 @@ Failed to display quizzes. Please try again later.
                             if hasattr(chat, 'is_forum') and chat.is_forum:
                                 logger.info(f"Chat {chat_id} is a forum group, attempting to find open topics...")
                                 
-                                # Try common topic IDs to find an open one
-                                # Forum topics usually start from ID 2 (1 is often General which is closed)
+                                # Try to get actual forum topics using get_forum_topic_icon_stickers
                                 open_topic_found = False
-                                for topic_id in range(2, 20):  # Try topic IDs 2-19
-                                    try:
-                                        logger.debug(f"Trying to send quiz to topic {topic_id} in chat {chat_id}")
-                                        await self.send_quiz(chat_id, context, auto_sent=True, scheduled=True, 
-                                                           chat_type=chat.type, message_thread_id=topic_id)
-                                        logger.info(f"✅ Successfully sent quiz to open topic {topic_id} in chat {chat_id}")
-                                        
-                                        # Remember this topic ID for future use
-                                        if not hasattr(context.bot_data, 'forum_topics'):
-                                            context.bot_data['forum_topics'] = {}
-                                        context.bot_data['forum_topics'][chat_id] = topic_id
-                                        open_topic_found = True
-                                        break
-                                    except Exception as topic_error:
-                                        if "Topic_closed" in str(topic_error):
-                                            logger.debug(f"Topic {topic_id} is also closed, trying next...")
-                                            continue
-                                        elif "message thread not found" in str(topic_error).lower():
-                                            logger.debug(f"Topic {topic_id} does not exist, trying next...")
-                                            continue
-                                        else:
-                                            logger.debug(f"Error sending to topic {topic_id}: {topic_error}")
-                                            continue
+                                
+                                # First, try to list actual topics in the forum
+                                try:
+                                    # Telegram doesn't have a direct API to list all topics, so we try common IDs
+                                    # Topic IDs in Telegram forums are usually sequential starting from 1
+                                    for topic_id in [1] + list(range(2, 50)):  # Try General (1) then 2-49
+                                        try:
+                                            logger.debug(f"Trying to send quiz to topic {topic_id} in forum chat {chat_id}")
+                                            await self.send_quiz(chat_id, context, auto_sent=True, scheduled=True, 
+                                                               chat_type=chat.type, message_thread_id=topic_id)
+                                            logger.info(f"✅ Successfully sent quiz to OPEN topic {topic_id} in forum chat {chat_id}")
+                                            
+                                            # Remember this topic ID for future use
+                                            if 'forum_topics' not in context.bot_data:
+                                                context.bot_data['forum_topics'] = {}
+                                            context.bot_data['forum_topics'][chat_id] = topic_id
+                                            open_topic_found = True
+                                            break
+                                        except Exception as topic_error:
+                                            error_msg = str(topic_error).lower()
+                                            if "topic_closed" in error_msg or "topic closed" in error_msg:
+                                                logger.debug(f"Topic {topic_id} is closed, trying next...")
+                                                continue
+                                            elif "message thread not found" in error_msg or "thread not found" in error_msg:
+                                                logger.debug(f"Topic {topic_id} does not exist, trying next...")
+                                                continue
+                                            else:
+                                                logger.debug(f"Error with topic {topic_id}: {topic_error}")
+                                                continue
+                                except Exception as scan_error:
+                                    logger.error(f"Error scanning forum topics: {scan_error}")
                                 
                                 if not open_topic_found:
                                     logger.warning(f"No open topics found in forum chat {chat_id}. All checked topics are closed.")
