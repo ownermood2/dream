@@ -2677,20 +2677,39 @@ Failed to display quizzes. Please try again later.
                         continue
 
                     # Check if we have a saved topic ID for this forum chat
+                    # Hardcoded topic mappings for specific groups (from user-provided URLs)
+                    FORUM_TOPIC_MAP = {
+                        -1002336761241: 2134  # User's forum group with open topic ID 2134
+                    }
+                    
                     saved_topic_id = None
                     if hasattr(chat, 'is_forum') and chat.is_forum:
-                        if 'forum_topics' in context.bot_data and chat_id in context.bot_data['forum_topics']:
+                        # First check hardcoded mappings
+                        if chat_id in FORUM_TOPIC_MAP:
+                            saved_topic_id = FORUM_TOPIC_MAP[chat_id]
+                            logger.info(f"Using configured topic ID {saved_topic_id} for forum chat {chat_id}")
+                        # Then check runtime saved topics
+                        elif 'forum_topics' in context.bot_data and chat_id in context.bot_data['forum_topics']:
                             saved_topic_id = context.bot_data['forum_topics'][chat_id]
                             logger.info(f"Using saved topic ID {saved_topic_id} for forum chat {chat_id}")
                     
                     # Send automated quiz with tracking parameters
-                    await self.send_quiz(chat_id, context, auto_sent=True, scheduled=True, 
-                                       chat_type=chat.type, message_thread_id=saved_topic_id)
-                    logger.info(f"Successfully sent automated quiz to chat {chat_id}")
+                    try:
+                        await self.send_quiz(chat_id, context, auto_sent=True, scheduled=True, 
+                                           chat_type=chat.type, message_thread_id=saved_topic_id)
+                        logger.info(f"Successfully sent automated quiz to chat {chat_id}")
+                    except Exception as send_error:
+                        # If saved topic ID is invalid, clear it and re-raise
+                        if "message thread not found" in str(send_error).lower() and saved_topic_id:
+                            logger.warning(f"Saved topic ID {saved_topic_id} is invalid, clearing it")
+                            if 'forum_topics' in context.bot_data and chat_id in context.bot_data['forum_topics']:
+                                del context.bot_data['forum_topics'][chat_id]
+                        raise
 
                 except Exception as e:
-                    # Handle closed topics - try to find an open topic in forum groups
-                    if "Topic_closed" in str(e):
+                    # Handle closed topics or invalid thread IDs - try to find an open topic in forum groups
+                    error_msg = str(e)
+                    if "Topic_closed" in error_msg or "message thread not found" in error_msg.lower():
                         logger.info(f"Default topic closed in chat {chat_id}, checking for open topics...")
                         try:
                             # Check if this is a forum group
@@ -2703,8 +2722,10 @@ Failed to display quizzes. Please try again later.
                                 # First, try to list actual topics in the forum
                                 try:
                                     # Telegram doesn't have a direct API to list all topics, so we try common IDs
-                                    # Topic IDs in Telegram forums are usually sequential starting from 1
-                                    for topic_id in [1] + list(range(2, 50)):  # Try General (1) then 2-49
+                                    # Topic IDs in Telegram forums can be high numbers (e.g., 2134)
+                                    # Try General (1), then common ranges
+                                    topic_ranges = [1] + list(range(2, 100)) + list(range(1000, 3000, 10))
+                                    for topic_id in topic_ranges:
                                         try:
                                             logger.debug(f"Trying to send quiz to topic {topic_id} in forum chat {chat_id}")
                                             await self.send_quiz(chat_id, context, auto_sent=True, scheduled=True, 
