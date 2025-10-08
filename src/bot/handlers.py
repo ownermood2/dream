@@ -2819,19 +2819,12 @@ Failed to display quizzes. Please try again later.
                         continue
 
                     # Check if we have a saved topic ID for this forum chat
-                    # Hardcoded topic mappings for specific groups (from user-provided URLs)
-                    FORUM_TOPIC_MAP = {
-                        -1002336761241: 2134  # User's forum group with open topic ID 2134
-                    }
-                    
                     saved_topic_id = None
-                    if hasattr(chat, 'is_forum') and chat.is_forum:
-                        # First check hardcoded mappings
-                        if chat_id in FORUM_TOPIC_MAP:
-                            saved_topic_id = FORUM_TOPIC_MAP[chat_id]
-                            logger.info(f"Using configured topic ID {saved_topic_id} for forum chat {chat_id}")
-                        # Then check runtime saved topics (skip invalid topic ID 1)
-                        elif 'forum_topics' in context.bot_data and chat_id in context.bot_data['forum_topics']:
+                    is_forum = hasattr(chat, 'is_forum') and chat.is_forum
+                    
+                    if is_forum:
+                        # Check runtime saved topics (skip invalid topic ID 1)
+                        if 'forum_topics' in context.bot_data and chat_id in context.bot_data['forum_topics']:
                             cached_topic = context.bot_data['forum_topics'][chat_id]
                             # Validate: Topic 1 is often invalid in forum groups, skip it
                             if cached_topic != 1:
@@ -2841,6 +2834,12 @@ Failed to display quizzes. Please try again later.
                                 logger.warning(f"Skipping invalid cached topic ID 1 for chat {chat_id}, will discover valid topic")
                                 # Clear invalid topic 1 from cache
                                 del context.bot_data['forum_topics'][chat_id]
+                        
+                        # If no valid saved topic for forum group, discover it NOW instead of trying to send
+                        if saved_topic_id is None:
+                            logger.info(f"No saved topic for forum chat {chat_id}, discovering open topics...")
+                            # Trigger topic discovery by raising Topic_closed exception
+                            raise Exception("Topic_closed - need to discover open topic")
                     
                     # Send automated quiz with tracking parameters
                     try:
