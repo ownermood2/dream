@@ -366,10 +366,9 @@ class TelegramQuizBot:
                 logger.info(f"Logged quiz_sent activity for chat {chat_id} (auto_sent={auto_sent}, scheduled={scheduled})")
 
         except Exception as e:
-            # Handle closed topics gracefully - don't send error messages to closed topics
+            # Re-raise Topic_closed so outer handler can skip gracefully
             if "Topic_closed" in str(e):
-                logger.info(f"Skipping quiz to chat {chat_id} - topic is closed")
-                return
+                raise  # Let the caller handle closed topics
             
             logger.error(f"Error sending quiz: {str(e)}\n{traceback.format_exc()}")
             
