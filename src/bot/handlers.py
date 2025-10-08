@@ -1091,6 +1091,7 @@ class TelegramQuizBot:
                 elif was_member and not is_member:
                     # Bot was removed from a group
                     self.quiz_manager.remove_active_chat(chat.id)
+                    self.db.remove_inactive_group(chat.id)
                     logger.info(f"Bot removed from group {chat.title} ({chat.id})")
 
         except Exception as e:

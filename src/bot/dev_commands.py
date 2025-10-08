@@ -1364,7 +1364,8 @@ class DeveloperCommands:
                             "bot is not a member",
                             "chat not found",
                             "group chat was deactivated",
-                            "chat has been deleted"
+                            "chat has been deleted",
+                            "forum topic is closed"
                         ]):
                             logger.info(f"AUTO-CLEANUP: Removing group {group['chat_id']} from database and active chats - {error_msg}")
                             self.db.remove_inactive_group(group['chat_id'])
@@ -1519,7 +1520,8 @@ class DeveloperCommands:
                             "bot is not a member",
                             "chat not found",
                             "group chat was deactivated",
-                            "chat has been deleted"
+                            "chat has been deleted",
+                            "forum topic is closed"
                         ]):
                             logger.info(f"AUTO-CLEANUP: Removing group {group['chat_id']} from database and active chats - {error_msg}")
                             self.db.remove_inactive_group(group['chat_id'])
@@ -1634,7 +1636,8 @@ class DeveloperCommands:
                             "bot is not a member",
                             "chat not found",
                             "group chat was deactivated",
-                            "chat has been deleted"
+                            "chat has been deleted",
+                            "forum topic is closed"
                         ]):
                             logger.info(f"AUTO-CLEANUP: Removing group {group['chat_id']} from database and active chats - {error_msg}")
                             self.db.remove_inactive_group(group['chat_id'])
