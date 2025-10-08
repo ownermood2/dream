@@ -2906,7 +2906,14 @@ Failed to display quizzes. Please try again later.
                                     logger.error(f"Error scanning forum topics: {scan_error}")
                                 
                                 if not open_topic_found:
-                                    logger.warning(f"No open topics found in forum chat {chat_id}. All checked topics are closed.")
+                                    logger.warning(f"No open topics found in forum chat {chat_id}. Attempting fallback to regular message...")
+                                    # Final fallback: Try sending as regular message without topic ID
+                                    try:
+                                        await self.send_quiz(chat_id, context, auto_sent=True, scheduled=True, 
+                                                           chat_type=chat_info.type, message_thread_id=None)
+                                        logger.info(f"✅ Successfully sent quiz as regular message to forum chat {chat_id} (fallback)")
+                                    except Exception as fallback_error:
+                                        logger.error(f"❌ Fallback failed for forum chat {chat_id}: {fallback_error}")
                             else:
                                 logger.info(f"Chat {chat_id} is not a forum, topic is closed")
                         except Exception as check_error:
