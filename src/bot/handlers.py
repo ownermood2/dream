@@ -421,6 +421,41 @@ class TelegramQuizBot:
         except Exception as e:
             logger.debug(f"Error tracking memory usage (non-critical): {e}")
     
+    async def handle_forum_topic_created(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Track newly created forum topics"""
+        if not update.message or not update.message.forum_topic_created:
+            return
+        
+        if not update.effective_chat:
+            return
+        
+        chat_id = update.effective_chat.id
+        topic_id = update.message.message_thread_id
+        topic_name = update.message.forum_topic_created.name
+        
+        if topic_id is None:
+            return
+        
+        self.db.save_forum_topic(chat_id, topic_id, topic_name)
+        logger.info(f"📋 Tracked new forum topic: {topic_name} (ID: {topic_id}) in chat {chat_id}")
+    
+    async def handle_forum_topic_closed(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Track closed forum topics"""
+        if not update.message or not update.message.forum_topic_closed:
+            return
+        
+        if not update.effective_chat:
+            return
+        
+        chat_id = update.effective_chat.id
+        topic_id = update.message.message_thread_id
+        
+        if topic_id is None:
+            return
+        
+        self.db.invalidate_forum_topic(chat_id, topic_id)
+        logger.info(f"🚫 Marked forum topic {topic_id} as closed in chat {chat_id}")
+    
     async def cleanup_performance_metrics(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Clean up performance metrics older than 7 days"""
         try:
@@ -646,6 +681,10 @@ class TelegramQuizBot:
             # Track ALL PM interactions (any message in private chat)
             from telegram.ext import MessageHandler, filters
             
+            # Forum topic service message handlers
+            self.application.add_handler(MessageHandler(filters.StatusUpdate.FORUM_TOPIC_CREATED, self.handle_forum_topic_created))
+            self.application.add_handler(MessageHandler(filters.StatusUpdate.FORUM_TOPIC_CLOSED, self.handle_forum_topic_closed))
+            
             # Handle text input for quiz editing (must come before PM tracking)
             self.application.add_handler(
                 MessageHandler(filters.TEXT & ~filters.COMMAND, self.dev_commands.handle_text_input)
@@ -822,6 +861,10 @@ class TelegramQuizBot:
             
             # Track ALL PM interactions (any message in private chat)
             from telegram.ext import MessageHandler, filters
+            
+            # Forum topic service message handlers
+            self.application.add_handler(MessageHandler(filters.StatusUpdate.FORUM_TOPIC_CREATED, self.handle_forum_topic_created))
+            self.application.add_handler(MessageHandler(filters.StatusUpdate.FORUM_TOPIC_CLOSED, self.handle_forum_topic_closed))
             
             # Handle text input for quiz editing (must come before PM tracking)
             self.application.add_handler(
@@ -2786,25 +2829,48 @@ Failed to display quizzes. Please try again later.
             logger.error(f"Error in totalquiz command: {e}")
             await update.message.reply_text("❌ Error getting total quiz count. Please try again.")
 
-    async def send_automated_quiz(self, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Send automated quiz to all active group chats"""
+    async def create_quiz_topic(self, chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> int | None:
+        """Create a new forum topic for quiz delivery if no open topics exist"""
         try:
-            # Send to groups
+            bot_member = await context.bot.get_chat_member(chat_id, context.bot.id)
+            can_manage = getattr(bot_member, 'can_manage_topics', False)
+            if not can_manage:
+                logger.warning(f"Bot lacks can_manage_topics permission in chat {chat_id}")
+                return None
+            
+            forum_topic = await context.bot.create_forum_topic(
+                chat_id=chat_id,
+                name="Quiz Zone",
+                icon_color=0x6FB9F0
+            )
+            
+            topic_id = forum_topic.message_thread_id
+            
+            self.db.save_forum_topic(chat_id, topic_id, "Quiz Zone")
+            
+            logger.info(f"✅ Created new forum topic 'Quiz Zone' (ID: {topic_id}) in chat {chat_id}")
+            return topic_id
+            
+        except Exception as e:
+            logger.error(f"Failed to create forum topic in chat {chat_id}: {e}")
+            return None
+
+    async def send_automated_quiz(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Send automated quiz to all active group chats with database-persisted forum topic management"""
+        try:
             active_chats = self.quiz_manager.get_active_chats()
             logger.info(f"Starting automated quiz broadcast to {len(active_chats)} active chats")
 
             for chat_id in active_chats:
                 try:
-                    # Check if chat is a group and bot is admin
                     try:
                         chat = await context.bot.get_chat(chat_id)
                     except Exception as e:
-                        # Handle kicked/removed bot gracefully
                         if "Forbidden" in str(e) or "kicked" in str(e).lower() or "not found" in str(e).lower():
                             logger.info(f"Bot no longer has access to chat {chat_id} (kicked/removed), removing from active chats")
                             self.quiz_manager.remove_active_chat(chat_id)
                             continue
-                        raise  # Re-raise if it's a different error
+                        raise
                     
                     if chat.type not in ["group", "supergroup"]:
                         logger.info(f"Skipping non-group chat {chat_id}")
@@ -2818,108 +2884,60 @@ Failed to display quizzes. Please try again later.
                         await self.send_admin_reminder(chat_id, context)
                         continue
 
-                    # Check if we have a saved topic ID for this forum chat
-                    saved_topic_id = None
                     is_forum = hasattr(chat, 'is_forum') and chat.is_forum
                     
                     if is_forum:
-                        # Check runtime saved topics (skip invalid topic ID 1)
-                        if 'forum_topics' in context.bot_data and chat_id in context.bot_data['forum_topics']:
-                            cached_topic = context.bot_data['forum_topics'][chat_id]
-                            # Validate: Topic 1 is often invalid in forum groups, skip it
-                            if cached_topic != 1:
-                                saved_topic_id = cached_topic
-                                logger.info(f"Using saved topic ID {saved_topic_id} for forum chat {chat_id}")
-                            else:
-                                logger.warning(f"Skipping invalid cached topic ID 1 for chat {chat_id}, will discover valid topic")
-                                # Clear invalid topic 1 from cache
-                                del context.bot_data['forum_topics'][chat_id]
+                        saved_topic = self.db.get_forum_topic(chat_id)
+                        if saved_topic:
+                            try:
+                                await self.send_quiz(chat_id, context, auto_sent=True, scheduled=True, 
+                                                   chat_type=chat.type, message_thread_id=saved_topic['topic_id'])
+                                logger.info(f"✅ Sent to saved topic {saved_topic['topic_id']} in chat {chat_id}")
+                                continue
+                            except Exception as e:
+                                error_msg = str(e).lower()
+                                if "message thread not found" in error_msg or "thread not found" in error_msg:
+                                    self.db.invalidate_forum_topic(chat_id, saved_topic['topic_id'])
+                                    logger.warning(f"⚠️ Saved topic {saved_topic['topic_id']} invalid for chat {chat_id}, discovering new topic...")
+                                else:
+                                    raise
                         
-                        # If no valid saved topic for forum group, discover it NOW instead of trying to send
-                        if saved_topic_id is None:
-                            logger.info(f"No saved topic for forum chat {chat_id}, discovering open topics...")
-                            # Trigger topic discovery by raising Topic_closed exception
-                            raise Exception("Topic_closed - need to discover open topic")
-                    
-                    # Send automated quiz with tracking parameters
-                    try:
+                        open_topic_found = False
+                        topic_ranges = list(range(2, 100)) + list(range(1000, 10000, 10))
+                        for topic_id in topic_ranges:
+                            try:
+                                await self.send_quiz(chat_id, context, auto_sent=True, scheduled=True, 
+                                                   chat_type=chat.type, message_thread_id=topic_id)
+                                self.db.save_forum_topic(chat_id, topic_id)
+                                logger.info(f"✅ Discovered and sent to open topic {topic_id} in chat {chat_id}")
+                                open_topic_found = True
+                                break
+                            except Exception as e:
+                                error_msg = str(e).lower()
+                                if "message thread not found" in error_msg or "thread not found" in error_msg:
+                                    continue
+                                elif "topic_closed" in error_msg or "topic closed" in error_msg:
+                                    continue
+                                else:
+                                    raise
+                        
+                        if not open_topic_found:
+                            new_topic_id = await self.create_quiz_topic(chat_id, context)
+                            if new_topic_id:
+                                await self.send_quiz(chat_id, context, auto_sent=True, scheduled=True, 
+                                                   chat_type=chat.type, message_thread_id=new_topic_id)
+                                logger.info(f"✅ Created new topic {new_topic_id} and sent quiz to chat {chat_id}")
+                            else:
+                                await self.send_quiz(chat_id, context, auto_sent=True, scheduled=True, 
+                                                   chat_type=chat.type, message_thread_id=None)
+                                logger.info(f"✅ Sent as regular message to forum chat {chat_id} (fallback)")
+                    else:
                         await self.send_quiz(chat_id, context, auto_sent=True, scheduled=True, 
-                                           chat_type=chat.type, message_thread_id=saved_topic_id)
-                        logger.info(f"Successfully sent automated quiz to chat {chat_id}")
-                    except Exception as send_error:
-                        # If saved topic ID is invalid, clear it and re-raise for topic discovery
-                        error_msg = str(send_error).lower()
-                        if ("message thread not found" in error_msg or "thread not found" in error_msg) and saved_topic_id:
-                            logger.warning(f"Saved topic ID {saved_topic_id} is invalid for chat {chat_id}, clearing it")
-                            if 'forum_topics' in context.bot_data and chat_id in context.bot_data['forum_topics']:
-                                del context.bot_data['forum_topics'][chat_id]
-                            # Re-raise to trigger topic discovery in outer exception handler
-                        raise
+                                           chat_type=chat.type, message_thread_id=None)
+                        logger.info(f"✅ Successfully sent automated quiz to chat {chat_id}")
 
                 except Exception as e:
-                    # Handle closed topics or invalid thread IDs - try to find an open topic in forum groups
-                    error_msg = str(e)
-                    if "Topic_closed" in error_msg or "message thread not found" in error_msg.lower():
-                        logger.info(f"Default topic closed in chat {chat_id}, checking for open topics...")
-                        try:
-                            # Get chat info for forum check (fetch fresh to ensure we have it)
-                            chat_info = await context.bot.get_chat(chat_id)
-                            
-                            # Check if this is a forum group
-                            if hasattr(chat_info, 'is_forum') and chat_info.is_forum:
-                                logger.info(f"Chat {chat_id} is a forum group, attempting to find open topics...")
-                                
-                                # Try to get actual forum topics using get_forum_topic_icon_stickers
-                                open_topic_found = False
-                                
-                                # First, try to list actual topics in the forum
-                                try:
-                                    # Telegram doesn't have a direct API to list all topics, so we try common IDs
-                                    # Topic IDs in Telegram forums can be high numbers (e.g., 2134)
-                                    # Skip topic 1 (General) as it's often closed, start from topic 2
-                                    topic_ranges = list(range(2, 100)) + list(range(1000, 10000, 10))
-                                    for topic_id in topic_ranges:
-                                        try:
-                                            logger.debug(f"Trying to send quiz to topic {topic_id} in forum chat {chat_id}")
-                                            await self.send_quiz(chat_id, context, auto_sent=True, scheduled=True, 
-                                                               chat_type=chat_info.type, message_thread_id=topic_id)
-                                            logger.info(f"✅ Successfully sent quiz to OPEN topic {topic_id} in forum chat {chat_id}")
-                                            
-                                            # Remember this topic ID for future use
-                                            if 'forum_topics' not in context.bot_data:
-                                                context.bot_data['forum_topics'] = {}
-                                            context.bot_data['forum_topics'][chat_id] = topic_id
-                                            open_topic_found = True
-                                            break
-                                        except Exception as topic_error:
-                                            error_msg = str(topic_error).lower()
-                                            if "topic_closed" in error_msg or "topic closed" in error_msg:
-                                                logger.debug(f"Topic {topic_id} is closed, trying next...")
-                                                continue
-                                            elif "message thread not found" in error_msg or "thread not found" in error_msg:
-                                                logger.debug(f"Topic {topic_id} does not exist, trying next...")
-                                                continue
-                                            else:
-                                                logger.debug(f"Error with topic {topic_id}: {topic_error}")
-                                                continue
-                                except Exception as scan_error:
-                                    logger.error(f"Error scanning forum topics: {scan_error}")
-                                
-                                if not open_topic_found:
-                                    logger.warning(f"No open topics found in forum chat {chat_id}. Attempting fallback to regular message...")
-                                    # Final fallback: Try sending as regular message without topic ID
-                                    try:
-                                        await self.send_quiz(chat_id, context, auto_sent=True, scheduled=True, 
-                                                           chat_type=chat_info.type, message_thread_id=None)
-                                        logger.info(f"✅ Successfully sent quiz as regular message to forum chat {chat_id} (fallback)")
-                                    except Exception as fallback_error:
-                                        logger.error(f"❌ Fallback failed for forum chat {chat_id}: {fallback_error}")
-                            else:
-                                logger.info(f"Chat {chat_id} is not a forum, topic is closed")
-                        except Exception as check_error:
-                            logger.error(f"Error checking forum topics: {check_error}")
-                    else:
-                        logger.error(f"Failed to send automated quiz to chat {chat_id}: {str(e)}\n{traceback.format_exc()}")
+                    logger.error(f"Failed to send automated quiz to chat {chat_id}: {str(e)}\n{traceback.format_exc()}")
                     continue
 
             logger.info("Completed automated quiz broadcast cycle")

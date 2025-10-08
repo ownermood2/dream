@@ -344,6 +344,19 @@ class DatabaseManager:
                 )
             '''))
             
+            cursor.execute(self._adapt_sql('''
+                CREATE TABLE IF NOT EXISTS forum_topics (
+                    chat_id BIGINT NOT NULL,
+                    topic_id INTEGER NOT NULL,
+                    topic_name TEXT,
+                    is_valid INTEGER DEFAULT 1,
+                    last_used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (chat_id, topic_id),
+                    FOREIGN KEY (chat_id) REFERENCES groups(chat_id) ON DELETE CASCADE
+                )
+            '''))
+            
             # Table for poll_id → quiz_id mapping (for /delquiz persistence without visible IDs)
             cursor.execute(self._adapt_sql('''
                 CREATE TABLE IF NOT EXISTS poll_quiz_mapping (
@@ -1139,6 +1152,97 @@ class DatabaseManager:
                     updated_at = CURRENT_TIMESTAMP
                 WHERE chat_id = ?
             ''', (chat_id,))
+    
+    def save_forum_topic(self, chat_id: int, topic_id: int, topic_name: str | None = None):
+        """Save or update a valid forum topic in the database.
+        
+        Args:
+            chat_id (int): Telegram chat ID.
+            topic_id (int): Forum topic ID.
+            topic_name (str, optional): Name of the forum topic.
+        
+        Raises:
+            DatabaseError: If operation fails.
+        """
+        with self.get_connection() as conn:
+            assert conn is not None
+            cursor = self._get_cursor(conn)
+            assert cursor is not None
+            self._execute(cursor, '''
+                INSERT INTO forum_topics (chat_id, topic_id, topic_name, is_valid, last_used_at)
+                VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)
+                ON CONFLICT(chat_id, topic_id) DO UPDATE SET
+                    topic_name = excluded.topic_name,
+                    is_valid = 1,
+                    last_used_at = CURRENT_TIMESTAMP
+            ''', (chat_id, topic_id, topic_name))
+            logger.debug(f"Saved forum topic {topic_id} for chat {chat_id}")
+    
+    def get_forum_topic(self, chat_id: int) -> Dict | None:
+        """Get the most recent valid forum topic for a chat.
+        
+        Args:
+            chat_id (int): Telegram chat ID.
+        
+        Returns:
+            Dict | None: Forum topic information or None if no valid topic exists.
+        
+        Raises:
+            DatabaseError: If query fails.
+        """
+        with self.get_connection() as conn:
+            assert conn is not None
+            cursor = self._get_cursor(conn)
+            assert cursor is not None
+            self._execute(cursor, '''
+                SELECT chat_id, topic_id, topic_name, last_used_at, created_at
+                FROM forum_topics
+                WHERE chat_id = ? AND is_valid = 1
+                ORDER BY last_used_at DESC
+                LIMIT 1
+            ''', (chat_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+    
+    def invalidate_forum_topic(self, chat_id: int, topic_id: int):
+        """Mark a forum topic as invalid (closed or inaccessible).
+        
+        Args:
+            chat_id (int): Telegram chat ID.
+            topic_id (int): Forum topic ID to invalidate.
+        
+        Raises:
+            DatabaseError: If update fails.
+        """
+        with self.get_connection() as conn:
+            assert conn is not None
+            cursor = self._get_cursor(conn)
+            assert cursor is not None
+            self._execute(cursor, '''
+                UPDATE forum_topics
+                SET is_valid = 0
+                WHERE chat_id = ? AND topic_id = ?
+            ''', (chat_id, topic_id))
+            logger.debug(f"Invalidated forum topic {topic_id} for chat {chat_id}")
+    
+    def delete_invalid_topics(self, chat_id: int):
+        """Delete all invalid forum topics for a chat.
+        
+        Args:
+            chat_id (int): Telegram chat ID.
+        
+        Raises:
+            DatabaseError: If deletion fails.
+        """
+        with self.get_connection() as conn:
+            assert conn is not None
+            cursor = self._get_cursor(conn)
+            assert cursor is not None
+            self._execute(cursor, '''
+                DELETE FROM forum_topics
+                WHERE chat_id = ? AND is_valid = 0
+            ''', (chat_id,))
+            logger.debug(f"Deleted invalid forum topics for chat {chat_id}")
     
     def record_quiz_answer(self, user_id: int, chat_id: int, question_id: int, 
                           question_text: str, user_answer: int, correct_answer: int, is_championship: bool = False):
