@@ -4,6 +4,7 @@ This project is a production-ready Telegram Quiz Bot application designed for in
 
 ## Recent Changes (Oct 8, 2025)
 - **Fixed automated quiz delivery bug**: Bot now correctly loads all active groups from database on startup. Previously, the `active_chats` list started empty after restarts, causing zero quiz broadcasts. Now loads groups from database into memory, ensuring automated quizzes are sent to all registered groups every 30 minutes.
+- **Fixed closed topic handling**: Bot now gracefully skips closed forum topics during automated quiz delivery. When a topic is closed, the bot logs it as info and continues to the next group without errors. Only open topics receive quizzes.
 
 ## Previous Changes (Oct 7, 2025)
 - **Implemented REAL-TIME MODE with zero caching**: Completely removed ALL caching from stats and leaderboard systems. Every `/mystats`, `/ranks`, `/leaderboard`, and `/stats` command now fetches live data directly from the database with zero delays. After each quiz attempt, user stats and ranks update instantly in the database, and subsequent commands show the updated data immediately. Removed all cache variables (_stats_cache, _leaderboard_cache), cache methods (_get_leaderboard_cached, _preload_leaderboard), and cache invalidation logic. All callbacks and scheduled jobs now query the database directly. This guarantees real-time synchronization with zero latency between quiz attempts and rank display.

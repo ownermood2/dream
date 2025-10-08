@@ -366,8 +366,18 @@ class TelegramQuizBot:
                 logger.info(f"Logged quiz_sent activity for chat {chat_id} (auto_sent={auto_sent}, scheduled={scheduled})")
 
         except Exception as e:
+            # Handle closed topics gracefully - don't send error messages to closed topics
+            if "Topic_closed" in str(e):
+                logger.info(f"Skipping quiz to chat {chat_id} - topic is closed")
+                return
+            
             logger.error(f"Error sending quiz: {str(e)}\n{traceback.format_exc()}")
-            await context.bot.send_message(chat_id=chat_id, text="Error sending quiz.")
+            
+            # Try to send error message, but don't fail if topic is closed
+            try:
+                await context.bot.send_message(chat_id=chat_id, text="Error sending quiz.")
+            except Exception:
+                pass  # Ignore if we can't send error message (e.g., closed topic)
 
     async def scheduled_cleanup(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Automatically clean old messages every hour"""
@@ -2662,7 +2672,11 @@ Failed to display quizzes. Please try again later.
                     logger.info(f"Successfully sent automated quiz to chat {chat_id}")
 
                 except Exception as e:
-                    logger.error(f"Failed to send automated quiz to chat {chat_id}: {str(e)}\n{traceback.format_exc()}")
+                    # Handle closed topics gracefully
+                    if "Topic_closed" in str(e):
+                        logger.info(f"Skipping chat {chat_id} - topic is closed")
+                    else:
+                        logger.error(f"Failed to send automated quiz to chat {chat_id}: {str(e)}\n{traceback.format_exc()}")
                     continue
 
             logger.info("Completed automated quiz broadcast cycle")
