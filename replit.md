@@ -3,6 +3,8 @@
 This project is a production-ready Telegram Quiz Bot application designed for interactive quiz functionality in Telegram chats and groups. It features a Flask web interface for administration, supports both webhook and polling deployment modes, and manages quiz questions, tracks user scores, and provides analytics. The primary goal is to deliver a robust, scalable, and user-friendly quiz experience with advanced administrative capabilities and seamless deployment across various platforms.
 
 ## Recent Changes (Oct 8, 2025)
+- **Fixed welcome message forum topic handling**: Welcome messages now properly detect forum groups and send to open topics (using hardcoded topic 2134 for group -1002336761241, or scanning topics 1-10000 to find open ones). Eliminates "Topic_closed" errors when bot joins new forum groups.
+- **Fixed LSP errors in forum topic handling**: Resolved "possibly unbound" variable errors in automated quiz delivery by ensuring chat info is always available before forum checks.
 - **Fixed automated quiz delivery bug**: Bot now correctly loads all active groups from database on startup. Previously, the `active_chats` list started empty after restarts, causing zero quiz broadcasts. Now loads groups from database into memory, ensuring automated quizzes are sent to all registered groups every 30 minutes.
 - **Fixed closed topic handling**: Bot now gracefully skips closed forum topics during automated quiz delivery. When a topic is closed, the bot logs it as info and continues to the next group without errors. Only open topics receive quizzes.
 

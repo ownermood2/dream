@@ -1025,6 +1025,26 @@ class TelegramQuizBot:
             Message: The sent message object, or None if an error occurred
         """
         try:
+            # Get chat info first to check if it's a forum
+            chat = await context.bot.get_chat(chat_id)
+            
+            # Determine message_thread_id for forum groups
+            message_thread_id = None
+            if hasattr(chat, 'is_forum') and chat.is_forum:
+                # Hardcoded forum topic mapping
+                FORUM_TOPIC_MAP = {
+                    -1002336761241: 2134  # User's forum group with open topic ID 2134
+                }
+                
+                # Check hardcoded mappings first
+                if chat_id in FORUM_TOPIC_MAP:
+                    message_thread_id = FORUM_TOPIC_MAP[chat_id]
+                    logger.info(f"Using configured topic ID {message_thread_id} for welcome message in forum chat {chat_id}")
+                # Then check runtime saved topics
+                elif 'forum_topics' in context.bot_data and chat_id in context.bot_data['forum_topics']:
+                    message_thread_id = context.bot_data['forum_topics'][chat_id]
+                    logger.info(f"Using saved topic ID {message_thread_id} for welcome message in forum chat {chat_id}")
+            
             keyboard = [
                 [InlineKeyboardButton(
                     "➕ Add to Your Group",
@@ -1062,15 +1082,56 @@ class TelegramQuizBot:
 ──────────────────────────────
 🔥 Add me to your groups & let the quiz fun begin! 🎯"""
 
-            sent_message = await context.bot.send_message(
-                chat_id=chat_id,
-                text=welcome_message,
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=reply_markup
-            )
+            try:
+                # Send welcome message with forum topic support
+                sent_message = await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=welcome_message,
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=reply_markup,
+                    message_thread_id=message_thread_id
+                )
+            except Exception as send_error:
+                # If topic is closed, try to find an open topic in forum groups
+                error_msg = str(send_error)
+                if "Topic_closed" in error_msg or "message thread not found" in error_msg.lower():
+                    if hasattr(chat, 'is_forum') and chat.is_forum:
+                        logger.info(f"Topic closed in forum {chat_id}, scanning for open topics...")
+                        # Try to find an open topic
+                        topic_ranges = [1] + list(range(2, 100)) + list(range(1000, 10000, 10))
+                        sent_message = None
+                        for topic_id in topic_ranges:
+                            try:
+                                sent_message = await context.bot.send_message(
+                                    chat_id=chat_id,
+                                    text=welcome_message,
+                                    parse_mode=ParseMode.MARKDOWN,
+                                    reply_markup=reply_markup,
+                                    message_thread_id=topic_id
+                                )
+                                logger.info(f"✅ Sent welcome message to OPEN topic {topic_id} in forum chat {chat_id}")
+                                # Save this topic for future use
+                                if 'forum_topics' not in context.bot_data:
+                                    context.bot_data['forum_topics'] = {}
+                                context.bot_data['forum_topics'][chat_id] = topic_id
+                                break
+                            except Exception as topic_error:
+                                error_text = str(topic_error).lower()
+                                if "topic_closed" in error_text or "message thread not found" in error_text:
+                                    continue
+                                else:
+                                    logger.debug(f"Error with topic {topic_id}: {topic_error}")
+                                    continue
+                        
+                        if not sent_message:
+                            logger.warning(f"No open topics found for welcome message in forum {chat_id}")
+                            return None
+                    else:
+                        raise
+                else:
+                    raise
 
-            # Get chat type and handle accordingly
-            chat = await context.bot.get_chat(chat_id)
+            # Handle accordingly based on chat type
             if chat.type in ["group", "supergroup"]:
                 is_admin = await self.check_admin_status(chat_id, context)
                 if is_admin:
