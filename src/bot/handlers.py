@@ -2772,11 +2772,13 @@ Failed to display quizzes. Please try again later.
                                            chat_type=chat.type, message_thread_id=saved_topic_id)
                         logger.info(f"Successfully sent automated quiz to chat {chat_id}")
                     except Exception as send_error:
-                        # If saved topic ID is invalid, clear it and re-raise
-                        if "message thread not found" in str(send_error).lower() and saved_topic_id:
-                            logger.warning(f"Saved topic ID {saved_topic_id} is invalid, clearing it")
+                        # If saved topic ID is invalid, clear it and re-raise for topic discovery
+                        error_msg = str(send_error).lower()
+                        if ("message thread not found" in error_msg or "thread not found" in error_msg) and saved_topic_id:
+                            logger.warning(f"Saved topic ID {saved_topic_id} is invalid for chat {chat_id}, clearing it")
                             if 'forum_topics' in context.bot_data and chat_id in context.bot_data['forum_topics']:
                                 del context.bot_data['forum_topics'][chat_id]
+                            # Re-raise to trigger topic discovery in outer exception handler
                         raise
 
                 except Exception as e:
