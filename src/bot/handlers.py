@@ -393,6 +393,9 @@ class TelegramQuizBot:
                 await context.bot.send_message(chat_id=chat_id, text="Error sending quiz.")
             except Exception:
                 pass  # Ignore if we can't send error message (e.g., closed topic)
+            
+            # Re-raise the exception so caller knows send failed
+            raise
 
     async def scheduled_cleanup(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Automatically clean old messages every hour"""
