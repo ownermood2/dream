@@ -136,28 +136,29 @@ class TelegramQuizBot:
             logger.error(f"Failed to register group {chat.id}: {e}")
 
     async def backfill_groups_startup(self):
-        """Migrate active_chats to database groups table on startup"""
+        """Load active groups from database into memory on startup"""
         try:
             if not self.application:
                 logger.error("Application not initialized in backfill_groups_startup")
                 return
             
-            active_chats = self.quiz_manager.get_active_chats()
-            logger.info(f"Backfilling {len(active_chats)} groups from active_chats to database")
+            # Load all active groups from database into active_chats
+            db_groups = self.db.get_all_groups(active_only=True)
+            logger.info(f"Loading {len(db_groups)} active groups from database into memory")
             
-            registered_count = 0
-            for chat_id in active_chats:
+            loaded_count = 0
+            for group in db_groups:
                 try:
-                    chat = await self.application.bot.get_chat(chat_id)
-                    if chat.type in ["group", "supergroup"]:
-                        chat_title = chat.title or chat.username or "(No Title)"
-                        self.db.add_or_update_group(chat.id, chat_title, chat.type)
-                        registered_count += 1
-                        logger.debug(f"Backfilled group {chat.id} ({chat_title})")
+                    chat_id = group['chat_id']
+                    # Add group to quiz_manager's active_chats list
+                    if chat_id not in self.quiz_manager.active_chats:
+                        self.quiz_manager.add_active_chat(chat_id)
+                        loaded_count += 1
+                        logger.debug(f"Loaded group {chat_id} ({group.get('chat_title', 'Unknown')}) into active chats")
                 except Exception as e:
-                    logger.warning(f"Failed to backfill group {chat_id}: {e}")
+                    logger.warning(f"Failed to load group {group.get('chat_id')}: {e}")
             
-            logger.info(f"Successfully backfilled {registered_count}/{len(active_chats)} groups to database")
+            logger.info(f"Successfully loaded {loaded_count}/{len(db_groups)} groups into active chats for automated quiz delivery")
         except Exception as e:
             logger.error(f"Error in backfill_groups_startup: {e}")
 
