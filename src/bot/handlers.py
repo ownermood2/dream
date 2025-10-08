@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 class TelegramQuizBot:
     def __init__(self, quiz_manager, db_manager: DatabaseManager | None = None):
-        """Initialize the quiz bot with enhanced features - REAL-TIME MODE (no caching for stats/leaderboard)"""
+        """Initialize the quiz bot with hybrid caching - Real-time stats + Smart leaderboard refresh"""
         self.quiz_manager = quiz_manager
         self.application = None
         self.user_command_cooldowns = defaultdict(dict)  # {user_id: {command: timestamp}}
@@ -47,11 +47,17 @@ class TelegramQuizBot:
         self._user_info_cache_time = {}
         self._user_info_cache_duration = timedelta(seconds=300)
         
+        # Leaderboard caching with 30s auto-refresh (production-ready)
+        self._leaderboard_cache = None
+        self._leaderboard_cache_time = None
+        self._leaderboard_cache_duration = 30  # 30 seconds
+        self._leaderboard_refreshing = False  # Lock to prevent concurrent refreshes
+        
         self.db = db_manager if db_manager else DatabaseManager()
         self.dev_commands = DeveloperCommands(self.db, quiz_manager)
         self.rate_limiter = RateLimiter()
         
-        logger.info("TelegramQuizBot initialized - REAL-TIME MODE: stats and leaderboard caching disabled for real-time data")
+        logger.info("TelegramQuizBot initialized - Hybrid mode: Real-time stats + Smart leaderboard caching (30s refresh)")
 
     def _add_or_update_user_cached(self, user_id: int, username: str | None = None, first_name: str | None = None, last_name: str | None = None):
         """OPTIMIZATION 1: Cached user info update - reduces redundant DB writes"""
@@ -432,11 +438,76 @@ class TelegramQuizBot:
             logger.error(f"Error cleaning up old activities: {e}")
     
     async def refresh_rank_cache(self, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """REAL-TIME MODE: No-op job (caching completely disabled - all cache variables removed)"""
+        """Auto-refresh leaderboard cache every 30 seconds - production-ready with retry logic"""
+        if self._leaderboard_refreshing:
+            logger.debug("Leaderboard refresh already in progress, skipping")
+            return
+        
         try:
-            logger.debug("Cache refresh skipped (REAL-TIME MODE - caching completely disabled)")
+            self._leaderboard_refreshing = True
+            start_time = time.time()
+            
+            # Fetch fresh leaderboard data from database
+            result = await asyncio.to_thread(self.db.get_leaderboard_realtime, limit=100, offset=0)
+            if result:
+                leaderboard, total_count = result
+                # Update cache
+                self._leaderboard_cache = leaderboard[:100]  # Top 100 only
+                self._leaderboard_cache_time = time.time()
+                
+                elapsed = time.time() - start_time
+                logger.info(f"🔄 Leaderboard cache refreshed successfully ({len(self._leaderboard_cache)} users, {elapsed:.2f}s)")
+            else:
+                logger.warning("Leaderboard refresh returned no data")
+            
         except Exception as e:
-            logger.error(f"Error in refresh_rank_cache: {e}")
+            logger.error(f"❌ Leaderboard cache refresh failed: {e}")
+            
+            # Retry once after 5 seconds on failure
+            try:
+                logger.info("Retrying leaderboard refresh after 5s...")
+                await asyncio.sleep(5)
+                
+                result = await asyncio.to_thread(self.db.get_leaderboard_realtime, limit=100, offset=0)
+                if result:
+                    leaderboard, total_count = result
+                    self._leaderboard_cache = leaderboard[:100]
+                    self._leaderboard_cache_time = time.time()
+                    logger.info(f"✅ Leaderboard cache refresh succeeded on retry ({len(self._leaderboard_cache)} users)")
+            except Exception as retry_error:
+                logger.error(f"❌ Leaderboard cache refresh retry failed: {retry_error}")
+        finally:
+            self._leaderboard_refreshing = False
+    
+    async def _get_leaderboard_with_cache(self, force_refresh: bool = False) -> list:
+        """Get leaderboard with smart caching - force refresh if stale (>30s)"""
+        current_time = time.time()
+        
+        # Force refresh if explicitly requested or cache is stale
+        if force_refresh or self._leaderboard_cache_time is None or \
+           (current_time - self._leaderboard_cache_time) > self._leaderboard_cache_duration:
+            
+            if self._leaderboard_cache_time is None:
+                logger.info("🔄 Initial leaderboard fetch (no cache)")
+            else:
+                age = current_time - self._leaderboard_cache_time
+                logger.info(f"🔄 Leaderboard cache stale ({age:.1f}s old), forcing refresh")
+            
+            # Refresh cache immediately
+            await self.refresh_rank_cache(None)
+        
+        # Return cached data (or empty list if refresh failed)
+        if self._leaderboard_cache is not None:
+            cache_age = current_time - self._leaderboard_cache_time if self._leaderboard_cache_time else 0
+            logger.debug(f"Using leaderboard cache ({cache_age:.1f}s old, {len(self._leaderboard_cache)} users)")
+            return self._leaderboard_cache
+        
+        logger.warning("No leaderboard cache available, fetching directly from database")
+        result = await asyncio.to_thread(self.db.get_leaderboard_realtime, limit=100, offset=0)
+        if result:
+            leaderboard, total_count = result
+            return leaderboard[:100]
+        return []
     
     async def cleanup_rate_limits(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Clean up old rate limit entries"""
@@ -654,11 +725,11 @@ class TelegramQuizBot:
                 first=60  # Start after 1 minute
             )
             
-            # Add rank cache auto-refresh job (every 5 minutes for real-time sync)
+            # Add rank cache auto-refresh job (every 30 seconds for near real-time sync)
             self.application.job_queue.run_repeating(
                 self.refresh_rank_cache,
-                interval=300,  # Every 5 minutes
-                first=120  # Start after 2 minutes
+                interval=30,  # Every 30 seconds
+                first=5  # Start after 5 seconds
             )
             
             # Add performance metrics cleanup job
@@ -825,11 +896,11 @@ class TelegramQuizBot:
                 first=60  # Start after 1 minute
             )
             
-            # Add rank cache auto-refresh job (every 5 minutes for real-time sync)
+            # Add rank cache auto-refresh job (every 30 seconds for near real-time sync)
             self.application.job_queue.run_repeating(
                 self.refresh_rank_cache,
-                interval=300,  # Every 5 minutes
-                first=120  # Start after 2 minutes
+                interval=30,  # Every 30 seconds
+                first=5  # Start after 5 seconds
             )
             
             # Add performance metrics cleanup job
@@ -2025,20 +2096,17 @@ Ready to begin? Try /quiz now! 🚀"""
             # Send loading message
             loading_msg = await update.message.reply_text("🏆 Loading leaderboard...")
             
-            # Get top 100 from database (REAL-TIME MODE - no caching)
-            logger.info(f"REAL-TIME: Fetching fresh leaderboard data from database for user {user.id}")
-            result = await asyncio.to_thread(self.db.get_leaderboard_realtime, limit=100, offset=0)
-            if not result:
-                await loading_msg.edit_text(
-                    "🏆 **Leaderboard**\n\n"
-                    "No quiz champions yet! 🎯\n\n"
-                    "Be the first to take a quiz and claim the top spot!\n\n"
-                    "💡 Use /quiz to get started",
-                    parse_mode=ParseMode.MARKDOWN
-                )
-                return
+            # Get leaderboard with smart caching (force refresh if stale > 30s)
+            current_time = time.time()
+            cache_age = current_time - self._leaderboard_cache_time if self._leaderboard_cache_time else 999
+            should_refresh = cache_age > self._leaderboard_cache_duration
             
-            leaderboard, total_count = result
+            if should_refresh:
+                logger.info(f"📊 /ranks: Cache stale ({cache_age:.1f}s), forcing refresh for user {user.id}")
+            else:
+                logger.info(f"📊 /ranks: Using cache ({cache_age:.1f}s old) for user {user.id}")
+            
+            leaderboard = await self._get_leaderboard_with_cache(force_refresh=should_refresh)
             
             if not leaderboard:
                 await loading_msg.edit_text(
@@ -3563,21 +3631,16 @@ Choose a category to explore:
             # Extract page number from callback data (e.g., "leaderboard_page_1")
             page = int(query.data.split('_')[-1])
             
-            # Get top 100 from database (REAL-TIME MODE - no caching)
-            logger.info(f"REAL-TIME: Fetching fresh leaderboard page {page+1} from database")
-            result = await asyncio.to_thread(self.db.get_leaderboard_realtime, limit=100, offset=0)
-            if not result:
-                await query.edit_message_text("❌ No leaderboard data available.")
-                return
+            # Get leaderboard with smart caching (use cache if fresh)
+            current_time = time.time()
+            cache_age = current_time - self._leaderboard_cache_time if self._leaderboard_cache_time else 999
             
-            leaderboard, total_count = result
+            logger.info(f"📊 Leaderboard page {page+1}: cache age {cache_age:.1f}s")
+            leaderboard = await self._get_leaderboard_with_cache(force_refresh=False)
             
             if not leaderboard:
                 await query.edit_message_text("❌ No leaderboard data available.")
                 return
-            
-            # Limit to top 100 users for display
-            leaderboard = leaderboard[:100]
             
             # Calculate total pages (10 users per page)
             USERS_PER_PAGE = 10
