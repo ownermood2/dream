@@ -1865,6 +1865,7 @@ Ready to begin? Try /quiz now! 🚀"""
 
                 # REAL-TIME MODE: Get user rank directly from database (no caching)
                 user_rank = self.db.get_user_rank(user.id)
+                logger.info(f"REAL-TIME rank fetched for user {user.id}: #{user_rank}")
                 if user_rank == 0:
                     user_rank = 'N/A'
                 
@@ -3386,8 +3387,9 @@ Ready to begin? 🚀"""
                     await query.edit_message_text(no_stats_text)
                     return
                 
-                # Get user rank
+                # Get user rank (REAL-TIME - direct from database)
                 user_rank = self.db.get_user_rank(update.effective_user.id)
+                logger.info(f"REAL-TIME rank fetched from callback for user {update.effective_user.id}: #{user_rank}")
                 if user_rank == 0:
                     user_rank = 'N/A'
                 

@@ -830,6 +830,7 @@ class DatabaseManager:
                         updated_at = CURRENT_TIMESTAMP
                     WHERE user_id = ?
                 ''', (activity_date, user_id))
+                logger.debug(f"REAL-TIME UPDATE: User {user_id} answered CORRECT → correct_answers+1, total_quizzes+1")
             else:
                 self._execute(cursor, '''
                     UPDATE users 
@@ -840,6 +841,7 @@ class DatabaseManager:
                         updated_at = CURRENT_TIMESTAMP
                     WHERE user_id = ?
                 ''', (activity_date, user_id))
+                logger.debug(f"REAL-TIME UPDATE: User {user_id} answered WRONG → wrong_answers+1, total_quizzes+1")
             
             self._execute(cursor, '''
                 UPDATE users 
@@ -2646,7 +2648,7 @@ class DatabaseManager:
     
     def get_user_rank(self, user_id: int) -> int:
         """
-        Get user's rank efficiently without fetching all users
+        Get user's rank efficiently without fetching all users (REAL-TIME MODE - no caching)
         Ranks are based on correct_answers DESC, total_quizzes ASC (same as leaderboard)
         
         Args:
@@ -2661,19 +2663,21 @@ class DatabaseManager:
                 cursor = self._get_cursor(conn)
                 assert cursor is not None
                 
-                # Get user's correct_answers and total_quizzes
+                # Get user's REAL-TIME stats from database
                 self._execute(cursor, '''
-                    SELECT correct_answers, total_quizzes
+                    SELECT correct_answers, total_quizzes, wrong_answers
                     FROM users
                     WHERE user_id = ? AND total_quizzes > 0
                 ''', (user_id,))
                 
                 user_stats = cursor.fetchone()
                 if not user_stats:
+                    logger.debug(f"Rank calculation: User {user_id} has no quiz attempts")
                     return 0
                 
                 user_correct = user_stats['correct_answers']
                 user_attempts = user_stats['total_quizzes']
+                user_wrong = user_stats['wrong_answers']
                 
                 # Count users who rank higher: more correct answers OR same correct with fewer attempts
                 self._execute(cursor, '''
@@ -2685,7 +2689,10 @@ class DatabaseManager:
                 ''', (user_correct, user_correct, user_attempts))
                 
                 result = cursor.fetchone()
-                return result['rank'] if result else 0
+                rank = result['rank'] if result else 0
+                
+                logger.debug(f"REAL-TIME Rank for user {user_id}: #{rank} (correct={user_correct}, total={user_attempts}, wrong={user_wrong})")
+                return rank
                 
         except Exception as e:
             logger.error(f"Error getting user rank: {e}")
