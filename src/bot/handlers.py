@@ -1313,7 +1313,17 @@ Need more help? We're here for you! 🌟"""
             loading_message = await update.message.reply_text("🎯 Preparing your quiz...")
             
             try:
-                await self.send_quiz(update.effective_chat.id, context, chat_type=chat.type)
+                # Check if this is a forum chat and use configured topic ID
+                FORUM_TOPIC_MAP = {
+                    -1002336761241: 2134  # User's forum group with open topic ID 2134
+                }
+                
+                message_thread_id = None
+                if hasattr(chat, 'is_forum') and chat.is_forum and chat.id in FORUM_TOPIC_MAP:
+                    message_thread_id = FORUM_TOPIC_MAP[chat.id]
+                    logger.info(f"Using configured topic ID {message_thread_id} for /quiz in forum chat {chat.id}")
+                
+                await self.send_quiz(update.effective_chat.id, context, chat_type=chat.type, message_thread_id=message_thread_id)
                 await loading_message.delete()
                 
                 # Auto-delete command message in groups (keep quiz visible)
@@ -2712,8 +2722,11 @@ Failed to display quizzes. Please try again later.
                     if "Topic_closed" in error_msg or "message thread not found" in error_msg.lower():
                         logger.info(f"Default topic closed in chat {chat_id}, checking for open topics...")
                         try:
+                            # Get chat info for forum check (fetch fresh to ensure we have it)
+                            chat_info = await context.bot.get_chat(chat_id)
+                            
                             # Check if this is a forum group
-                            if hasattr(chat, 'is_forum') and chat.is_forum:
+                            if hasattr(chat_info, 'is_forum') and chat_info.is_forum:
                                 logger.info(f"Chat {chat_id} is a forum group, attempting to find open topics...")
                                 
                                 # Try to get actual forum topics using get_forum_topic_icon_stickers
@@ -2723,13 +2736,13 @@ Failed to display quizzes. Please try again later.
                                 try:
                                     # Telegram doesn't have a direct API to list all topics, so we try common IDs
                                     # Topic IDs in Telegram forums can be high numbers (e.g., 2134)
-                                    # Try General (1), then common ranges
-                                    topic_ranges = [1] + list(range(2, 100)) + list(range(1000, 3000, 10))
+                                    # Try General (1), then scan up to 10000
+                                    topic_ranges = [1] + list(range(2, 100)) + list(range(1000, 10000, 10))
                                     for topic_id in topic_ranges:
                                         try:
                                             logger.debug(f"Trying to send quiz to topic {topic_id} in forum chat {chat_id}")
                                             await self.send_quiz(chat_id, context, auto_sent=True, scheduled=True, 
-                                                               chat_type=chat.type, message_thread_id=topic_id)
+                                                               chat_type=chat_info.type, message_thread_id=topic_id)
                                             logger.info(f"✅ Successfully sent quiz to OPEN topic {topic_id} in forum chat {chat_id}")
                                             
                                             # Remember this topic ID for future use
