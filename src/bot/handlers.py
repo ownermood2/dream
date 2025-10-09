@@ -1036,58 +1036,133 @@ class TelegramQuizBot:
                     await self.ensure_group_registered(chat, context)
                     await self.send_welcome_message(chat.id, context)
 
-                    # Auto-send quiz after 5 seconds when added to group
+                    # Check if bot is admin before sending quiz
                     await asyncio.sleep(5)
+                    is_admin = await self.check_admin_status(chat.id, context)
                     
-                    last_quiz_msg_id = self.db.get_last_quiz_message(chat.id)
-                    if last_quiz_msg_id:
-                        try:
-                            await context.bot.delete_message(chat.id, last_quiz_msg_id)
-                            logger.info(f"Deleted old quiz message {last_quiz_msg_id} in group {chat.id}")
-                        except Exception as e:
-                            logger.debug(f"Could not delete old quiz message: {e}")
-                    
-                    question = self.quiz_manager.get_random_question(chat.id)
-                    if question:
-                        question_text = question['question'].strip()
-                        if question_text.startswith('/addquiz'):
-                            question_text = question_text[len('/addquiz'):].strip()
+                    if is_admin:
+                        # Bot IS admin - send quiz
+                        last_quiz_msg_id = self.db.get_last_quiz_message(chat.id)
+                        if last_quiz_msg_id:
+                            try:
+                                await context.bot.delete_message(chat.id, last_quiz_msg_id)
+                                logger.info(f"Deleted old quiz message {last_quiz_msg_id} in group {chat.id}")
+                            except Exception as e:
+                                logger.debug(f"Could not delete old quiz message: {e}")
                         
-                        # Get question ID for persistence
-                        question_id = question.get('id')
-                        
-                        message = await context.bot.send_poll(
+                        question = self.quiz_manager.get_random_question(chat.id)
+                        if question:
+                            question_text = question['question'].strip()
+                            if question_text.startswith('/addquiz'):
+                                question_text = question_text[len('/addquiz'):].strip()
+                            
+                            # Get question ID for persistence
+                            question_id = question.get('id')
+                            
+                            message = await context.bot.send_poll(
+                                chat_id=chat.id,
+                                question=question_text,
+                                options=question['options'],
+                                type=Poll.QUIZ,
+                                correct_option_id=question['correct_answer'],
+                                is_anonymous=False
+                            )
+                            
+                            if message and message.poll:
+                                poll_data = {
+                                    'chat_id': chat.id,
+                                    'correct_option_id': question['correct_answer'],
+                                    'user_answers': {},
+                                    'poll_id': message.poll.id,
+                                    'question': question_text,
+                                    'question_id': question_id,
+                                    'timestamp': datetime.now().isoformat()
+                                }
+                                context.bot_data[f"poll_{message.poll.id}"] = poll_data
+                                
+                                # Save poll_id → quiz_id mapping to database for /delquiz persistence
+                                if question_id:
+                                    self.db.save_poll_quiz_mapping(message.poll.id, question_id)
+                                
+                                self.db.update_last_quiz_message(chat.id, message.message_id)
+                                self.db.increment_quiz_count()
+                                
+                                logger.info(f"Auto-sent quiz to group {chat.id} after bot added (admin confirmed)")
+                    else:
+                        # Bot is NOT admin - send request message
+                        await context.bot.send_message(
                             chat_id=chat.id,
-                            question=question_text,
-                            options=question['options'],
-                            type=Poll.QUIZ,
-                            correct_option_id=question['correct_answer'],
-                            is_anonymous=False
+                            text="⚠️ Please make me an admin to start sending quizzes!\n\n"
+                                 "I need admin permissions to send quizzes every 30 minutes.\n"
+                                 "Once you promote me, I'll send the first quiz automatically. 🎯"
                         )
-                        
-                        if message and message.poll:
-                            poll_data = {
-                                'chat_id': chat.id,
-                                'correct_option_id': question['correct_answer'],
-                                'user_answers': {},
-                                'poll_id': message.poll.id,
-                                'question': question_text,
-                                'question_id': question_id,
-                                'timestamp': datetime.now().isoformat()
-                            }
-                            context.bot_data[f"poll_{message.poll.id}"] = poll_data
-                            
-                            # Save poll_id → quiz_id mapping to database for /delquiz persistence
-                            if question_id:
-                                self.db.save_poll_quiz_mapping(message.poll.id, question_id)
-                            
-                            self.db.update_last_quiz_message(chat.id, message.message_id)
-                            self.db.increment_quiz_count()
-                            
-                            logger.info(f"Auto-sent quiz to group {chat.id} after bot added")
+                        logger.info(f"Bot added to group {chat.id} but not admin - sent promotion request")
 
                     logger.info(f"Bot added to group {chat.title} ({chat.id})")
 
+                elif was_member and is_member:
+                    # Bot status changed while still a member - check for promotion
+                    if update.my_chat_member:
+                        old_status = update.my_chat_member.old_chat_member.status
+                        new_status = update.my_chat_member.new_chat_member.status
+                        
+                        if old_status == "member" and new_status in ["administrator", "creator"]:
+                            # Bot was promoted to admin!
+                            await context.bot.send_message(
+                                chat_id=chat.id,
+                                text="✅ Thanks! I'm now an admin. Sending your first quiz... 🎯"
+                            )
+                            
+                            await asyncio.sleep(3)
+                            
+                            # Send first quiz
+                            last_quiz_msg_id = self.db.get_last_quiz_message(chat.id)
+                            if last_quiz_msg_id:
+                                try:
+                                    await context.bot.delete_message(chat.id, last_quiz_msg_id)
+                                    logger.info(f"Deleted old quiz message {last_quiz_msg_id} in group {chat.id}")
+                                except Exception as e:
+                                    logger.debug(f"Could not delete old quiz message: {e}")
+                            
+                            question = self.quiz_manager.get_random_question(chat.id)
+                            if question:
+                                question_text = question['question'].strip()
+                                if question_text.startswith('/addquiz'):
+                                    question_text = question_text[len('/addquiz'):].strip()
+                                
+                                # Get question ID for persistence
+                                question_id = question.get('id')
+                                
+                                message = await context.bot.send_poll(
+                                    chat_id=chat.id,
+                                    question=question_text,
+                                    options=question['options'],
+                                    type=Poll.QUIZ,
+                                    correct_option_id=question['correct_answer'],
+                                    is_anonymous=False
+                                )
+                                
+                                if message and message.poll:
+                                    poll_data = {
+                                        'chat_id': chat.id,
+                                        'correct_option_id': question['correct_answer'],
+                                        'user_answers': {},
+                                        'poll_id': message.poll.id,
+                                        'question': question_text,
+                                        'question_id': question_id,
+                                        'timestamp': datetime.now().isoformat()
+                                    }
+                                    context.bot_data[f"poll_{message.poll.id}"] = poll_data
+                                    
+                                    # Save poll_id → quiz_id mapping to database for /delquiz persistence
+                                    if question_id:
+                                        self.db.save_poll_quiz_mapping(message.poll.id, question_id)
+                                    
+                                    self.db.update_last_quiz_message(chat.id, message.message_id)
+                                    self.db.increment_quiz_count()
+                                    
+                                    logger.info(f"Sent first quiz to group {chat.id} after bot promotion")
+                
                 elif was_member and not is_member:
                     # Bot was removed from a group
                     self.quiz_manager.remove_active_chat(chat.id)
